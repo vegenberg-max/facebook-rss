@@ -344,6 +344,12 @@ app.get(
     res
   ) => {
 
+    console.log(
+      "FEED REQUEST:",
+      req.params.id,
+      new Date().toISOString()
+    );
+
     const source =
       SOURCES.find(
         item =>
