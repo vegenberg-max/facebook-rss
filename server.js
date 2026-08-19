@@ -1,0 +1,392 @@
+import express from "express";
+import { chromium } from "playwright";
+import fs from "fs/promises";
+
+const app = express();
+
+const PORT =
+  process.env.PORT || 3000;
+
+const SOURCES =
+  JSON.parse(
+    await fs.readFile(
+      "./sources.json",
+      "utf8"
+    )
+  );
+
+let browser;
+
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function escapeXml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+
+async function getBrowser() {
+
+  if (browser) {
+    return browser;
+  }
+
+  browser =
+    await chromium.launch({
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox"
+      ]
+    });
+
+  return browser;
+}
+
+
+/* =========================================================
+   FACEBOOK
+========================================================= */
+
+async function scrapeFacebook(url) {
+
+  const browser =
+    await getBrowser();
+
+  const context =
+    await browser.newContext({
+      userAgent:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36"
+    });
+
+
+  /*
+     Якщо є cookies.json —
+     використовуємо Facebook-сесію.
+  */
+
+  try {
+
+    const cookies =
+      JSON.parse(
+        await fs.readFile(
+          "./cookies.json",
+          "utf8"
+        )
+      );
+
+    if (
+      Array.isArray(cookies) &&
+      cookies.length > 0
+    ) {
+
+      await context.addCookies(
+        cookies
+      );
+    }
+
+  } catch {
+    // cookies поки немає
+  }
+
+
+  const page =
+    await context.newPage();
+
+
+  await page.goto(
+    url,
+    {
+      waitUntil:
+        "domcontentloaded",
+
+      timeout:
+        30000
+    }
+  );
+
+
+  /*
+     Даємо Facebook
+     трохи часу дорендеритись.
+  */
+
+  await page.waitForTimeout(
+    4000
+  );
+
+
+  /*
+     Беремо видимі пости.
+  */
+
+  const posts =
+    await page.locator(
+      '[role="article"]'
+    ).evaluateAll(
+      nodes => {
+
+        return nodes
+          .slice(0, 10)
+          .map(node => {
+
+            const text =
+              node.innerText || "";
+
+
+            /*
+               Шукаємо Facebook post/reel URL.
+            */
+
+            const links =
+              [...node.querySelectorAll("a")]
+                .map(a => a.href)
+                .filter(Boolean);
+
+
+            const postUrl =
+              links.find(
+                href =>
+                  href.includes("/posts/") ||
+                  href.includes("/reel/") ||
+                  href.includes("/videos/")
+              ) || "";
+
+
+            /*
+               Фото.
+            */
+
+            const images =
+              [
+                ...node.querySelectorAll(
+                  "img"
+                )
+              ]
+                .map(
+                  img =>
+                    img.src
+                )
+                .filter(
+                  src =>
+                    src &&
+                    src.startsWith("http")
+                );
+
+
+            return {
+              text,
+              postUrl,
+              images:
+                [...new Set(images)]
+            };
+
+          })
+          .filter(
+            post =>
+              post.text ||
+              post.postUrl
+          );
+      }
+    );
+
+
+  await context.close();
+
+  return posts;
+}
+
+
+/* =========================================================
+   RSS
+========================================================= */
+
+function makeRss(
+  source,
+  posts
+) {
+
+  const items =
+    posts.map(
+      post => {
+
+        const guid =
+          post.postUrl ||
+          post.text.slice(0, 100);
+
+
+        const imageHtml =
+          post.images
+            .map(
+              image =>
+                `<img src="${escapeXml(image)}">`
+            )
+            .join("");
+
+
+        return `
+<item>
+  <title>${escapeXml(
+    post.text.slice(0, 120)
+  )}</title>
+
+  <link>${escapeXml(
+    post.postUrl
+  )}</link>
+
+  <guid isPermaLink="false">${escapeXml(
+    guid
+  )}</guid>
+
+  <description><![CDATA[
+${post.text}
+
+${imageHtml}
+  ]]></description>
+
+</item>
+`;
+      }
+    )
+    .join("\n");
+
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+
+<rss version="2.0">
+
+<channel>
+
+<title>Facebook RSS ${escapeXml(
+    source.id
+  )}</title>
+
+<link>${escapeXml(
+    source.url
+  )}</link>
+
+<description>
+Custom Facebook RSS feed
+</description>
+
+${items}
+
+</channel>
+
+</rss>`;
+}
+
+
+/* =========================================================
+   ROUTES
+========================================================= */
+
+app.get(
+  "/",
+  (
+    req,
+    res
+  ) => {
+
+    res.json({
+      ok: true,
+      service:
+        "Facebook RSS",
+
+      feeds:
+        SOURCES.map(
+          source =>
+            `/feed/${source.id}`
+        )
+    });
+  }
+);
+
+
+app.get(
+  "/feed/:id",
+  async (
+    req,
+    res
+  ) => {
+
+    const source =
+      SOURCES.find(
+        item =>
+          item.id ===
+          req.params.id
+      );
+
+
+    if (!source) {
+
+      return res
+        .status(404)
+        .send(
+          "Feed not found"
+        );
+    }
+
+
+    try {
+
+      const posts =
+        await scrapeFacebook(
+          source.url
+        );
+
+
+      const rss =
+        makeRss(
+          source,
+          posts
+        );
+
+
+      res.set(
+        "Content-Type",
+        "application/rss+xml; charset=utf-8"
+      );
+
+
+      res.send(
+        rss
+      );
+
+
+    } catch (error) {
+
+      console.error(
+        error
+      );
+
+
+      res
+        .status(500)
+        .send(
+          String(
+            error?.message ||
+            error
+          )
+        );
+    }
+  }
+);
+
+
+app.listen(
+  PORT,
+  () => {
+
+    console.log(
+      `Facebook RSS running on port ${PORT}`
+    );
+  }
+);
