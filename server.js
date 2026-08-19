@@ -121,7 +121,23 @@ async function scrapeFacebook(url) {
   await page.waitForTimeout(
     4000
   );
-
+  
+  console.log(
+    "FACEBOOK URL:",
+    page.url()
+  );
+  
+  console.log(
+    "FACEBOOK TITLE:",
+    await page.title()
+  );
+  
+  console.log(
+    "ARTICLES FOUND:",
+    await page.locator(
+      '[role="article"]'
+    ).count()
+  );
 
   /*
      Беремо видимі пости.
