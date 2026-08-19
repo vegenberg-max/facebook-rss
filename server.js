@@ -68,32 +68,43 @@ async function scrapeFacebook(url) {
 
 
   /*
-     Якщо є cookies.json —
-     використовуємо Facebook-сесію.
+     Facebook cookies із Render Environment.
   */
 
   try {
 
-    const cookies =
-      JSON.parse(
-        await fs.readFile(
-          "./cookies.json",
-          "utf8"
-        )
-      );
+    const rawCookies =
+      process.env.FACEBOOK_COOKIES;
 
-    if (
-      Array.isArray(cookies) &&
-      cookies.length > 0
-    ) {
+    if (rawCookies) {
 
-      await context.addCookies(
-        cookies
-      );
+      const cookies =
+        JSON.parse(
+          rawCookies
+        );
+
+      if (
+        Array.isArray(cookies) &&
+        cookies.length > 0
+      ) {
+
+        await context.addCookies(
+          cookies
+        );
+
+        console.log(
+          "FACEBOOK COOKIES LOADED:",
+          cookies.length
+        );
+      }
     }
 
-  } catch {
-    // cookies поки немає
+  } catch (error) {
+
+    console.log(
+      "FACEBOOK COOKIES ERROR:",
+      String(error)
+    );
   }
 
 
