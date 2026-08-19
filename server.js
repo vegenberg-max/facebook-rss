@@ -82,15 +82,81 @@ async function scrapeFacebook(url) {
         JSON.parse(
           rawCookies
         );
-
+      
       if (
         Array.isArray(cookies) &&
         cookies.length > 0
       ) {
-
+      
+        const normalizedCookies =
+          cookies.map(cookie => {
+      
+            const fixed = {
+              ...cookie
+            };
+      
+            /*
+               Cookie-Editor може віддати:
+               "no_restriction",
+               "unspecified",
+               null,
+               або lowercase.
+      
+               Playwright приймає тільки:
+               Strict / Lax / None
+            */
+      
+            const sameSite =
+              String(
+                fixed.sameSite || ""
+              ).toLowerCase();
+      
+            if (
+              sameSite === "strict"
+            ) {
+              fixed.sameSite =
+                "Strict";
+      
+            } else if (
+              sameSite === "lax"
+            ) {
+              fixed.sameSite =
+                "Lax";
+      
+            } else if (
+              sameSite === "none" ||
+              sameSite === "no_restriction"
+            ) {
+              fixed.sameSite =
+                "None";
+      
+            } else {
+              delete fixed.sameSite;
+            }
+      
+            /*
+               Прибираємо поля Cookie-Editor,
+               які Playwright не використовує.
+            */
+      
+            delete fixed.id;
+            delete fixed.storeId;
+            delete fixed.hostOnly;
+            delete fixed.session;
+      
+            return fixed;
+          });
+      
+      
         await context.addCookies(
-          cookies
+          normalizedCookies
         );
+      
+        console.log(
+          "FACEBOOK COOKIES LOADED:",
+          normalizedCookies.length
+        );
+      }
 
         console.log(
           "FACEBOOK COOKIES LOADED:",
