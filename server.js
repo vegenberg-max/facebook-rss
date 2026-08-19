@@ -52,7 +52,15 @@ function cleanFacebookPostText(text) {
     )
 
     .filter(line =>
-      !/^напис(ать|ати)\s+общедоступн/i.test(line)
+      !/^напишите\s+общедоступный\s+комментарий/i.test(line)
+    )
+    
+    .filter(line =>
+      !/^написать\s+общедоступный\s+комментарий/i.test(line)
+    )
+    
+    .filter(line =>
+      !/^написати\s+загальнодоступний\s+коментар/i.test(line)
     )
 
     .filter(line =>
