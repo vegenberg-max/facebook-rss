@@ -31,6 +31,81 @@ function escapeXml(value) {
     .replace(/'/g, "&apos;");
 }
 
+function cleanFacebookPostText(text) {
+
+  return String(text || "")
+    .replace(/\r/g, "")
+    .split("\n")
+    .map(line => line.trim())
+    .filter(Boolean)
+
+    /*
+       Прибираємо типове сміття Facebook.
+    */
+
+    .filter(line =>
+      !/^\d+\s*(ч\.|мин\.|минут|час|часы|h|hr|hrs|min)$/i.test(line)
+    )
+
+    .filter(line =>
+      !/^·$/.test(line)
+    )
+
+    .filter(line =>
+      !/^напис(ать|ати)\s+общедоступн/i.test(line)
+    )
+
+    .filter(line =>
+      !/^write\s+a\s+public\s+comment/i.test(line)
+    )
+
+    .filter(line =>
+      !/^комментировать$/i.test(line)
+    )
+
+    .filter(line =>
+      !/^comment$/i.test(line)
+    )
+
+    /*
+       Прибираємо сусідні дублікати рядків.
+    */
+
+    .filter((line, index, array) =>
+      index === 0 ||
+      line !== array[index - 1]
+    )
+
+    .join("\n")
+    .trim();
+}
+
+
+function cleanFacebookPostUrl(url) {
+
+  const value =
+    String(url || "");
+
+  const match =
+    value.match(
+      /https:\/\/www\.facebook\.com\/groups\/\d+\/posts\/\d+\//
+    ) ||
+    value.match(
+      /https:\/\/www\.facebook\.com\/[^\/\s]+\/posts\/\d+\//
+    ) ||
+    value.match(
+      /https:\/\/www\.facebook\.com\/reel\/\d+\//
+    ) ||
+    value.match(
+      /https:\/\/www\.facebook\.com\/[^\/\s]+\/videos\/\d+\//
+    );
+
+  if (match) {
+    return match[0];
+  }
+
+  return value.split("?")[0];
+}
 
 async function getBrowser() {
 
@@ -277,10 +352,38 @@ async function scrapeFacebook(url) {
       }
     );
 
-
+  const cleanedPosts =
+    posts
+      .map(post => {
+  
+        const cleanedText =
+          cleanFacebookPostText(
+            post.text
+          );
+  
+        const cleanedUrl =
+          cleanFacebookPostUrl(
+            post.postUrl
+          );
+  
+        return {
+          ...post,
+  
+          text:
+            cleanedText,
+  
+          postUrl:
+            cleanedUrl
+        };
+      })
+      .filter(post =>
+        post.text ||
+        post.postUrl
+      );
+  
   await context.close();
 
-  return posts;
+  return cleanedPosts;
 }
 
 
