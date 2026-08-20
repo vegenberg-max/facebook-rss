@@ -809,8 +809,7 @@ app.get(
     
     
     /*
-       Дозволяємо Facebook CDN
-       і Meteofor external image proxy.
+       Дозволяємо Facebook CDN.
     */
     
     const allowedHost =
@@ -827,6 +826,19 @@ app.get(
     if (
       !allowedHost
     ) {
+    
+      console.log(
+        "IMAGE PROXY BLOCKED HOST:",
+        hostname
+      );
+    
+      return res
+        .status(403)
+        .send(
+          "Host not allowed: " +
+          hostname
+        );
+    }
     
       console.log(
         "IMAGE PROXY BLOCKED HOST:",
