@@ -779,7 +779,7 @@ app.get(
 
       parsed =
         new URL(
-        0  imageUrl
+           imageUrl
         );
 
     } catch {
