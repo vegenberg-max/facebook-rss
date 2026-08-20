@@ -138,6 +138,41 @@ async function getBrowser() {
    FACEBOOK
 ========================================================= */
 
+let facebookScrapeQueue =
+  Promise.resolve();
+
+
+async function scrapeFacebookQueued(
+  url
+) {
+
+  const previous =
+    facebookScrapeQueue;
+
+
+  let release;
+
+  facebookScrapeQueue =
+    new Promise(resolve => {
+      release = resolve;
+    });
+
+
+  await previous;
+
+
+  try {
+
+    return await scrapeFacebook(
+      url
+    );
+
+  } finally {
+
+    release();
+  }
+}
+
 async function scrapeFacebook(url) {
 
   const browser =
@@ -633,7 +668,7 @@ app.get(
     try {
 
       const posts =
-        await scrapeFacebook(
+        await scrapeFacebookQueued(
           source.url
         );
 
