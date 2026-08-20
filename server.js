@@ -742,6 +742,277 @@ app.get(
   }
 );
 
+/* =========================================================
+   FACEBOOK IMAGE PROXY
+========================================================= */
+
+app.get(
+  "/image",
+  async (
+    req,
+    res
+  ) => {
+
+    const imageUrl =
+      String(
+        req.query.url || ""
+      );
+
+
+    if (!imageUrl) {
+
+      return res
+        .status(400)
+        .send(
+          "Image URL required"
+        );
+    }
+
+
+    /*
+       Дозволяємо тільки Facebook CDN.
+    */
+
+    let parsed;
+
+    try {
+
+      parsed =
+        new URL(
+          imageUrl
+        );
+
+    } catch {
+
+      return res
+        .status(400)
+        .send(
+          "Invalid image URL"
+        );
+    }
+
+
+    const hostname =
+      parsed.hostname
+        .toLowerCase();
+
+
+    if (
+      !hostname.endsWith(
+        ".fbcdn.net"
+      ) &&
+      hostname !==
+        "fbcdn.net"
+    ) {
+
+      return res
+        .status(403)
+        .send(
+          "Host not allowed"
+        );
+    }
+
+
+    let context;
+
+
+    try {
+
+      const browser =
+        await getBrowser();
+
+
+      context =
+        await browser.newContext({
+          userAgent:
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36"
+        });
+
+
+      /*
+         Додаємо Facebook cookies.
+      */
+
+      const rawCookies =
+        process.env.FACEBOOK_COOKIES;
+
+
+      if (rawCookies) {
+
+        const cookies =
+          JSON.parse(
+            rawCookies
+          );
+
+
+        if (
+          Array.isArray(cookies) &&
+          cookies.length > 0
+        ) {
+
+          const normalizedCookies =
+            cookies.map(cookie => {
+
+              const fixed = {
+                ...cookie
+              };
+
+
+              const sameSite =
+                String(
+                  fixed.sameSite || ""
+                ).toLowerCase();
+
+
+              if (
+                sameSite === "strict"
+              ) {
+
+                fixed.sameSite =
+                  "Strict";
+
+              } else if (
+                sameSite === "lax"
+              ) {
+
+                fixed.sameSite =
+                  "Lax";
+
+              } else if (
+                sameSite === "none" ||
+                sameSite ===
+                  "no_restriction"
+              ) {
+
+                fixed.sameSite =
+                  "None";
+
+              } else {
+
+                delete fixed.sameSite;
+              }
+
+
+              delete fixed.id;
+              delete fixed.storeId;
+              delete fixed.hostOnly;
+              delete fixed.session;
+
+
+              return fixed;
+            });
+
+
+          await context.addCookies(
+            normalizedCookies
+          );
+        }
+      }
+
+
+      /*
+         Render сам завантажує
+         Facebook-картинку.
+      */
+
+      const response =
+        await context.request.get(
+          imageUrl,
+          {
+            headers: {
+              Referer:
+                "https://www.facebook.com/",
+
+              Accept:
+                "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"
+            },
+
+            timeout:
+              30000
+          }
+        );
+
+
+      if (
+        !response.ok()
+      ) {
+
+        console.log(
+          "IMAGE PROXY ERROR:",
+          response.status(),
+          imageUrl
+        );
+
+
+        return res
+          .status(
+            response.status()
+          )
+          .send(
+            "Facebook image error"
+          );
+      }
+
+
+      const body =
+        await response.body();
+
+
+      const contentType =
+        response.headers()[
+          "content-type"
+        ] ||
+        "image/jpeg";
+
+
+      res.set(
+        "Content-Type",
+        contentType
+      );
+
+
+      res.set(
+        "Cache-Control",
+        "public, max-age=3600"
+      );
+
+
+      return res.send(
+        Buffer.from(
+          body
+        )
+      );
+
+
+    } catch (error) {
+
+      console.log(
+        "IMAGE PROXY EXCEPTION:",
+        String(error)
+      );
+
+
+      return res
+        .status(500)
+        .send(
+          "Image proxy failed"
+        );
+
+
+    } finally {
+
+      if (context) {
+
+        try {
+
+          await context.close();
+
+        } catch {
+        }
+      }
+    }
+  }
+);
 
 app.get(
   "/feed/:id",
