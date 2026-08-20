@@ -149,251 +149,349 @@ async function scrapeFacebook(url) {
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36"
     });
 
-
-    /*
-     Facebook cookies із Render Environment.
-  */
-
   try {
 
-    const rawCookies =
-      process.env.FACEBOOK_COOKIES;
+    /*
+       Facebook cookies із Render Environment.
+    */
 
-    if (rawCookies) {
+    try {
 
-      const cookies =
-        JSON.parse(
-          rawCookies
-        );
+      const rawCookies =
+        process.env.FACEBOOK_COOKIES;
+
+      if (rawCookies) {
+
+        const cookies =
+          JSON.parse(
+            rawCookies
+          );
+
+        if (
+          Array.isArray(cookies) &&
+          cookies.length > 0
+        ) {
+
+          const normalizedCookies =
+            cookies.map(cookie => {
+
+              const fixed = {
+                ...cookie
+              };
+
+              const sameSite =
+                String(
+                  fixed.sameSite || ""
+                ).toLowerCase();
+
+              if (
+                sameSite === "strict"
+              ) {
+
+                fixed.sameSite =
+                  "Strict";
+
+              } else if (
+                sameSite === "lax"
+              ) {
+
+                fixed.sameSite =
+                  "Lax";
+
+              } else if (
+                sameSite === "none" ||
+                sameSite === "no_restriction"
+              ) {
+
+                fixed.sameSite =
+                  "None";
+
+              } else {
+
+                delete fixed.sameSite;
+              }
+
+
+              /*
+                 Поля Cookie-Editor,
+                 які Playwright не потрібні.
+              */
+
+              delete fixed.id;
+              delete fixed.storeId;
+              delete fixed.hostOnly;
+              delete fixed.session;
+
+              return fixed;
+            });
+
+
+          await context.addCookies(
+            normalizedCookies
+          );
+
+
+          console.log(
+            "FACEBOOK COOKIES LOADED:",
+            normalizedCookies.length
+          );
+        }
+      }
+
+    } catch (error) {
+
+      console.log(
+        "FACEBOOK COOKIES ERROR:",
+        String(error)
+      );
+    }
+
+
+    const page =
+      await context.newPage();
+
+
+    /*
+       Відкриваємо Facebook.
+
+       Якщо Facebook завис —
+       не валимо весь RSS/Render.
+    */
+
+    try {
+
+      await page.goto(
+        url,
+        {
+          waitUntil:
+            "domcontentloaded",
+
+          timeout:
+            25000
+        }
+      );
+
+    } catch (error) {
+
+      console.log(
+        "FACEBOOK GOTO ERROR:",
+        url,
+        String(error)
+      );
+
+
+      /*
+         Навіть після timeout сторінка
+         іноді вже частково завантажена.
+
+         Якщо Facebook взагалі не відкрився —
+         просто повертаємо порожній результат.
+      */
+
+      const currentUrl =
+        page.url();
+
 
       if (
-        Array.isArray(cookies) &&
-        cookies.length > 0
+        !currentUrl ||
+        currentUrl === "about:blank"
       ) {
 
-        const normalizedCookies =
-          cookies.map(cookie => {
-
-            const fixed = {
-              ...cookie
-            };
-
-            const sameSite =
-              String(
-                fixed.sameSite || ""
-              ).toLowerCase();
-
-            if (
-              sameSite === "strict"
-            ) {
-
-              fixed.sameSite =
-                "Strict";
-
-            } else if (
-              sameSite === "lax"
-            ) {
-
-              fixed.sameSite =
-                "Lax";
-
-            } else if (
-              sameSite === "none" ||
-              sameSite === "no_restriction"
-            ) {
-
-              fixed.sameSite =
-                "None";
-
-            } else {
-
-              delete fixed.sameSite;
-            }
-
-            /*
-               Поля Cookie-Editor,
-               які Playwright не потрібні.
-            */
-
-            delete fixed.id;
-            delete fixed.storeId;
-            delete fixed.hostOnly;
-            delete fixed.session;
-
-            return fixed;
-          });
-
-
-        await context.addCookies(
-          normalizedCookies
-        );
-
-
-        console.log(
-          "FACEBOOK COOKIES LOADED:",
-          normalizedCookies.length
-        );
+        return [];
       }
     }
+
+
+    /*
+       Даємо Facebook трохи часу
+       дорендерити пости.
+    */
+
+    await page.waitForTimeout(
+      3000
+    );
+
+
+    console.log(
+      "FACEBOOK URL:",
+      page.url()
+    );
+
+
+    console.log(
+      "FACEBOOK TITLE:",
+      await page.title()
+    );
+
+
+    const articleCount =
+      await page.locator(
+        '[role="article"]'
+      ).count();
+
+
+    console.log(
+      "ARTICLES FOUND:",
+      articleCount
+    );
+
+
+    /*
+       Беремо видимі пости.
+    */
+
+    const posts =
+      await page.locator(
+        '[role="article"]'
+      ).evaluateAll(
+        nodes => {
+
+          return nodes
+            .slice(0, 10)
+            .map(node => {
+
+              const text =
+                node.innerText || "";
+
+
+              /*
+                 Шукаємо Facebook post/reel URL.
+              */
+
+              const links =
+                [...node.querySelectorAll("a")]
+                  .map(a => a.href)
+                  .filter(Boolean);
+
+
+              const postUrl =
+                links.find(
+                  href =>
+                    href.includes("/posts/") ||
+                    href.includes("/reel/") ||
+                    href.includes("/videos/")
+                ) || "";
+
+
+              /*
+                 Фото.
+              */
+
+              const images =
+                [
+                  ...node.querySelectorAll(
+                    "img"
+                  )
+                ]
+                  .map(
+                    img =>
+                      img.src
+                  )
+                  .filter(
+                    src =>
+                      src &&
+                      src.startsWith("http")
+                  );
+
+
+              return {
+
+                text,
+
+                postUrl,
+
+                images:
+                  [...new Set(images)]
+              };
+
+            })
+            .filter(
+              post =>
+                post.text ||
+                post.postUrl
+            );
+        }
+      );
+
+
+    const cleanedPosts =
+      posts
+        .map(post => {
+
+          const cleanedText =
+            cleanFacebookPostText(
+              post.text
+            );
+
+
+          const cleanedUrl =
+            cleanFacebookPostUrl(
+              post.postUrl
+            );
+
+
+          return {
+
+            ...post,
+
+            text:
+              cleanedText,
+
+            postUrl:
+              cleanedUrl
+          };
+        })
+        .filter(
+          post =>
+            post.text ||
+            post.postUrl
+        );
+
+
+    return cleanedPosts;
+
 
   } catch (error) {
 
+    /*
+       Будь-яка інша помилка одного feed
+       не повинна валити весь Render.
+    */
+
     console.log(
-      "FACEBOOK COOKIES ERROR:",
+      "FACEBOOK SCRAPE ERROR:",
+      url,
       String(error)
     );
-  }
-
-  const page =
-    await context.newPage();
 
 
-  await page.goto(
-    url,
-    {
-      waitUntil:
-        "domcontentloaded",
-
-      timeout:
-        30000
-    }
-  );
+    return [];
 
 
-  /*
-     Даємо Facebook
-     трохи часу дорендеритись.
-  */
+  } finally {
 
-  await page.waitForTimeout(
-    4000
-  );
-  
-  console.log(
-    "FACEBOOK URL:",
-    page.url()
-  );
-  
-  console.log(
-    "FACEBOOK TITLE:",
-    await page.title()
-  );
-  
-  console.log(
-    "ARTICLES FOUND:",
-    await page.locator(
-      '[role="article"]'
-    ).count()
-  );
+    /*
+       ДУЖЕ ВАЖЛИВО.
 
-  /*
-     Беремо видимі пости.
-  */
+       Context закривається ЗАВЖДИ:
+       і після успіху,
+       і після timeout,
+       і після будь-якої помилки.
+    */
 
-  const posts =
-    await page.locator(
-      '[role="article"]'
-    ).evaluateAll(
-      nodes => {
+    try {
 
-        return nodes
-          .slice(0, 10)
-          .map(node => {
+      await context.close();
 
-            const text =
-              node.innerText || "";
+    } catch (error) {
 
-
-            /*
-               Шукаємо Facebook post/reel URL.
-            */
-
-            const links =
-              [...node.querySelectorAll("a")]
-                .map(a => a.href)
-                .filter(Boolean);
-
-
-            const postUrl =
-              links.find(
-                href =>
-                  href.includes("/posts/") ||
-                  href.includes("/reel/") ||
-                  href.includes("/videos/")
-              ) || "";
-
-
-            /*
-               Фото.
-            */
-
-            const images =
-              [
-                ...node.querySelectorAll(
-                  "img"
-                )
-              ]
-                .map(
-                  img =>
-                    img.src
-                )
-                .filter(
-                  src =>
-                    src &&
-                    src.startsWith("http")
-                );
-
-
-            return {
-              text,
-              postUrl,
-              images:
-                [...new Set(images)]
-            };
-
-          })
-          .filter(
-            post =>
-              post.text ||
-              post.postUrl
-          );
-      }
-    );
-
-  const cleanedPosts =
-    posts
-      .map(post => {
-  
-        const cleanedText =
-          cleanFacebookPostText(
-            post.text
-          );
-  
-        const cleanedUrl =
-          cleanFacebookPostUrl(
-            post.postUrl
-          );
-  
-        return {
-          ...post,
-  
-          text:
-            cleanedText,
-  
-          postUrl:
-            cleanedUrl
-        };
-      })
-      .filter(post =>
-        post.text ||
-        post.postUrl
+      console.log(
+        "FACEBOOK CONTEXT CLOSE ERROR:",
+        String(error)
       );
-  
-  await context.close();
-
-  return cleanedPosts;
+    }
+  }
 }
-
 
 /* =========================================================
    RSS
