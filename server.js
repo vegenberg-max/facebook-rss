@@ -840,20 +840,6 @@ app.get(
         );
     }
     
-      console.log(
-        "IMAGE PROXY BLOCKED HOST:",
-        hostname
-      );
-    
-      return res
-        .status(403)
-        .send(
-          "Host not allowed: " +
-          hostname
-        );
-    }
-
-
     let context;
 
 
