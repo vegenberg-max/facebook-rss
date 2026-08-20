@@ -779,7 +779,7 @@ app.get(
 
       parsed =
         new URL(
-          imageUrl
+        0  imageUrl
         );
 
     } catch {
@@ -797,18 +797,47 @@ app.get(
         .toLowerCase();
 
 
-    if (
-      !hostname.endsWith(
+    console.log(
+      "IMAGE PROXY REQUEST:",
+      imageUrl
+    );
+    
+    console.log(
+      "IMAGE PROXY HOST:",
+      hostname
+    );
+    
+    
+    /*
+       Дозволяємо Facebook CDN
+       і Meteofor external image proxy.
+    */
+    
+    const allowedHost =
+      hostname.endsWith(
         ".fbcdn.net"
-      ) &&
-      hostname !==
-        "fbcdn.net"
+      ) ||
+      hostname ===
+        "fbcdn.net" ||
+      hostname.endsWith(
+        ".facebook.com"
+      );
+    
+    
+    if (
+      !allowedHost
     ) {
-
+    
+      console.log(
+        "IMAGE PROXY BLOCKED HOST:",
+        hostname
+      );
+    
       return res
         .status(403)
         .send(
-          "Host not allowed"
+          "Host not allowed: " +
+          hostname
         );
     }
 
