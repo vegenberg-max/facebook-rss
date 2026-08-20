@@ -941,10 +941,40 @@ app.get(
          Render сам завантажує
          Facebook-картинку.
       */
-
+      let downloadUrl =
+        imageUrl;
+      
+      try {
+      
+        const parsedImage =
+          new URL(
+            imageUrl
+          );
+      
+        const originalUrl =
+          parsedImage.searchParams.get(
+            "url"
+          );
+      
+        if (
+          originalUrl
+        ) {
+      
+          downloadUrl =
+            originalUrl;
+      
+          console.log(
+            "IMAGE PROXY ORIGINAL URL:",
+            downloadUrl
+          );
+        }
+      
+      } catch {
+      }
+            
       const response =
         await context.request.get(
-          imageUrl,
+          downloadUrl,
           {
             headers: {
               Referer:
@@ -967,7 +997,7 @@ app.get(
         console.log(
           "IMAGE PROXY ERROR:",
           response.status(),
-          imageUrl
+          downloadUrl
         );
 
 
