@@ -1023,26 +1023,26 @@ async function scrapeFacebook(url) {
     const cleanedPosts =
       posts
         .map(post => {
-
+    
           const cleanedText =
             cleanFacebookPostText(
               post.text
             );
-
-
+    
+    
           const cleanedUrl =
             cleanFacebookPostUrl(
               post.postUrl
             );
-
-
+    
+    
           return {
-
+    
             ...post,
-
+    
             text:
               cleanedText,
-
+    
             postUrl:
               cleanedUrl
           };
@@ -1052,9 +1052,65 @@ async function scrapeFacebook(url) {
             post.text ||
             post.postUrl
         );
-
-
-    return cleanedPosts;
+    
+    
+    /*
+       Facebook іноді створює окремі
+       [role="article"] для коментарів.
+    
+       Вони можуть вести на той самий
+       /posts/123/, тільки з ?comment_id=...
+    
+       Після cleanFacebookPostUrl()
+       вони мають однаковий postUrl.
+    
+       Залишаємо один запис на один пост.
+       Якщо варіантів декілька —
+       беремо той, де більше тексту.
+    */
+    
+    const uniquePosts =
+      new Map();
+    
+    
+    for (
+      const post
+      of cleanedPosts
+    ) {
+    
+      /*
+         Якщо Facebook URL немає,
+         використовуємо текст як fallback.
+      */
+    
+      const key =
+        post.postUrl ||
+        post.text.slice(0, 200);
+    
+    
+      const previous =
+        uniquePosts.get(
+          key
+        );
+    
+    
+      if (
+        !previous ||
+        post.text.length >
+          previous.text.length
+      ) {
+    
+        uniquePosts.set(
+          key,
+          post
+        );
+      }
+    }
+    
+    
+    return [
+      ...uniquePosts.values()
+    ];
 
 
   } catch (error) {
