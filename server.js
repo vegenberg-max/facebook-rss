@@ -20,6 +20,9 @@ let browser;
 const TELEGRAM_BOT_TOKEN =
   process.env.TELEGRAM_BOT_TOKEN || "";
 
+const TELEGRAM_ADMIN_USERNAME =
+  process.env.TELEGRAM_ADMIN_USERNAME || "";
+
 const TELEGRAM_ADMIN_ID =
   process.env.TELEGRAM_ADMIN_ID || "";
 
@@ -574,10 +577,25 @@ async function checkFacebookAuth() {
 
 
       await sendTelegramAlert(
+
+        "🚨 " +
+        (
+          TELEGRAM_ADMIN_USERNAME
+            ? `@${TELEGRAM_ADMIN_USERNAME} `
+            : ""
+        ) +
+        "ПОТРІБНІ НОВІ FACEBOOK COOKIES!\n\n" +
+      
         "⚠️ Facebook-сесія на Render протухла.\n\n" +
-        "Частина RSS, які потребують авторизації, тимчасово буде пропускатися.\n" +
-        "Публічні сторінки, які відкриваються без логіну, продовжать працювати.\n\n" +
-        "Потрібно оновити FACEBOOK_COOKIES у Render."
+      
+        "RSS, які потребують авторизації, " +
+        "тимчасово не читаються.\n\n" +
+      
+        "Публічні Facebook-сторінки продовжують працювати.\n\n" +
+      
+        "👉 Онови FACEBOOK_COOKIES у Render.",
+      
+        true
       );
     }
 
@@ -831,10 +849,25 @@ async function scrapeFacebook(url) {
     
     
         await sendTelegramAlert(
-          "⚠️ Facebook-сесія на Render, схоже, протухла.\n\n" +
-          "Джерела, які вимагають логіну, тимчасово пропускаю.\n" +
-          "Публічні RSS продовжують працювати.\n\n" +
-          "Потрібно оновити FACEBOOK_COOKIES."
+
+          "🚨 " +
+          (
+            TELEGRAM_ADMIN_USERNAME
+              ? `@${TELEGRAM_ADMIN_USERNAME} `
+              : ""
+          ) +
+          "ПОТРІБНІ НОВІ FACEBOOK COOKIES!\n\n" +
+        
+          "⚠️ Facebook-сесія на Render протухла.\n\n" +
+        
+          "RSS, які потребують авторизації, " +
+          "тимчасово не читаються.\n\n" +
+        
+          "Публічні Facebook-сторінки продовжують працювати.\n\n" +
+        
+          "👉 Онови FACEBOOK_COOKIES у Render.",
+        
+          true
         );
       }
 
