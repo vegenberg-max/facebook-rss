@@ -17,6 +17,66 @@ const SOURCES =
 
 let browser;
 
+const TELEGRAM_BOT_TOKEN =
+  process.env.TELEGRAM_BOT_TOKEN || "";
+
+const TELEGRAM_ADMIN_ID =
+  process.env.TELEGRAM_ADMIN_ID || "";
+
+
+let facebookAuthBroken =
+  false;
+
+
+async function sendTelegramAlert(
+  text
+) {
+
+  if (
+    !TELEGRAM_BOT_TOKEN ||
+    !TELEGRAM_ADMIN_ID
+  ) {
+
+    console.log(
+      "TELEGRAM ALERT SKIPPED: env not configured"
+    );
+
+    return;
+  }
+
+
+  try {
+
+    await fetch(
+      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+      {
+        method:
+          "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json"
+        },
+
+        body:
+          JSON.stringify({
+            chat_id:
+              TELEGRAM_ADMIN_ID,
+
+            text
+          })
+      }
+    );
+
+  } catch (error) {
+
+    console.log(
+      "TELEGRAM ALERT ERROR:",
+      String(error)
+    );
+  }
+}
+
 
 /* =========================================================
    HELPERS
@@ -282,6 +342,203 @@ async function scrapeFacebookQueued(
   }
 }
 
+async function checkFacebookAuth() {
+
+  const browser =
+    await getBrowser();
+
+
+  const context =
+    await browser.newContext({
+      userAgent:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36"
+    });
+
+
+  try {
+
+    const rawCookies =
+      process.env.FACEBOOK_COOKIES;
+
+
+    if (rawCookies) {
+
+      const cookies =
+        JSON.parse(
+          rawCookies
+        );
+
+
+      if (
+        Array.isArray(cookies) &&
+        cookies.length > 0
+      ) {
+
+        const normalizedCookies =
+          cookies.map(
+            cookie => {
+
+              const fixed = {
+                ...cookie
+              };
+
+
+              const sameSite =
+                String(
+                  fixed.sameSite || ""
+                ).toLowerCase();
+
+
+              if (
+                sameSite === "strict"
+              ) {
+
+                fixed.sameSite =
+                  "Strict";
+
+              } else if (
+                sameSite === "lax"
+              ) {
+
+                fixed.sameSite =
+                  "Lax";
+
+              } else if (
+                sameSite === "none" ||
+                sameSite ===
+                  "no_restriction"
+              ) {
+
+                fixed.sameSite =
+                  "None";
+
+              } else {
+
+                delete fixed.sameSite;
+              }
+
+
+              delete fixed.id;
+              delete fixed.storeId;
+              delete fixed.hostOnly;
+              delete fixed.session;
+
+
+              return fixed;
+            }
+          );
+
+
+        await context.addCookies(
+          normalizedCookies
+        );
+      }
+    }
+
+
+    const page =
+      await context.newPage();
+
+
+    await page.goto(
+      "https://www.facebook.com/me",
+      {
+        waitUntil:
+          "domcontentloaded",
+
+        timeout:
+          25000
+      }
+    );
+
+
+    await page.waitForTimeout(
+      1500
+    );
+
+
+    const currentUrl =
+      page.url();
+
+
+    const authWorks =
+      !currentUrl.includes(
+        "facebook.com/login"
+      );
+
+
+    console.log(
+      "FACEBOOK PERIODIC AUTH:",
+      authWorks
+        ? "OK"
+        : "BROKEN",
+      currentUrl
+    );
+
+
+    if (
+      !authWorks &&
+      !facebookAuthBroken
+    ) {
+
+      facebookAuthBroken =
+        true;
+
+
+      await sendTelegramAlert(
+        "⚠️ Facebook-сесія на Render протухла.\n\n" +
+        "Частина RSS, які потребують авторизації, тимчасово буде пропускатися.\n" +
+        "Публічні сторінки, які відкриваються без логіну, продовжать працювати.\n\n" +
+        "Потрібно оновити FACEBOOK_COOKIES у Render."
+      );
+    }
+
+
+    if (
+      authWorks &&
+      facebookAuthBroken
+    ) {
+
+      facebookAuthBroken =
+        false;
+
+
+      await sendTelegramAlert(
+        "✅ Facebook-сесію на Render відновлено. RSS знову можуть читати джерела, які потребують авторизації."
+      );
+    }
+
+
+    return authWorks;
+
+
+  } catch (error) {
+
+    console.log(
+      "FACEBOOK PERIODIC AUTH ERROR:",
+      String(error)
+    );
+
+
+    /*
+       Timeout сам по собі ще не означає,
+       що cookies протухли.
+    */
+
+    return null;
+
+
+  } finally {
+
+    try {
+
+      await context.close();
+
+    } catch {
+    }
+  }
+}
+
 async function scrapeFacebook(url) {
 
   const browser =
@@ -476,7 +733,23 @@ async function scrapeFacebook(url) {
         "FACEBOOK AUTH REQUIRED:",
         url
       );
+
+      if (
+        !facebookAuthBroken
+      ) {
     
+        facebookAuthBroken =
+          true;
+    
+    
+        await sendTelegramAlert(
+          "⚠️ Facebook-сесія на Render, схоже, протухла.\n\n" +
+          "Джерела, які вимагають логіну, тимчасово пропускаю.\n" +
+          "Публічні RSS продовжують працювати.\n\n" +
+          "Потрібно оновити FACEBOOK_COOKIES."
+        );
+      }
+
     
       throw new Error(
         "FACEBOOK_AUTH_REQUIRED"
@@ -1306,17 +1579,17 @@ app.listen(
 
     setTimeout(
       () => {
-
+    
         console.log(
           "STARTING RSS CACHE WARMUP"
         );
-
-
+    
+    
         for (
           const source
           of SOURCES
         ) {
-
+    
           updateFeedCache(
             source
           ).catch(
@@ -1328,9 +1601,47 @@ app.listen(
               )
           );
         }
-
+    
       },
       5000
     );
-  }
-);
+    
+    
+    /*
+     * Перевіряємо Facebook-сесію
+     * одразу після запуску Render.
+     */
+    
+    checkFacebookAuth()
+      .catch(
+        error =>
+          console.log(
+            "INITIAL FACEBOOK AUTH CHECK ERROR:",
+            String(error)
+          )
+      );
+    
+    
+    /*
+     * Потім перевіряємо
+     * Facebook-сесію раз на годину.
+     */
+    
+    setInterval(
+      () => {
+    
+        checkFacebookAuth()
+          .catch(
+            error =>
+              console.log(
+                "FACEBOOK AUTH CHECK ERROR:",
+                String(error)
+              )
+          );
+    
+      },
+      60 * 60 * 1000
+    );
+    
+      }
+    );
