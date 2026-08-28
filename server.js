@@ -379,6 +379,13 @@ async function scrapeFacebook(url) {
             "FACEBOOK COOKIES LOADED:",
             normalizedCookies.length
           );
+
+          console.log(
+            "FACEBOOK COOKIE NAMES:",
+            normalizedCookies.map(
+              cookie => cookie.name
+            )
+          );
         }
       }
 
@@ -455,6 +462,26 @@ async function scrapeFacebook(url) {
       3000
     );
 
+    const finalFacebookUrl =
+      page.url();
+    
+    
+    if (
+      finalFacebookUrl.includes(
+        "facebook.com/login"
+      )
+    ) {
+    
+      console.log(
+        "FACEBOOK AUTH REQUIRED:",
+        url
+      );
+    
+    
+      throw new Error(
+        "FACEBOOK_AUTH_REQUIRED"
+      );
+    }
 
     console.log(
       "FACEBOOK URL:",
@@ -637,20 +664,25 @@ async function scrapeFacebook(url) {
 
 
   } catch (error) {
-
-    /*
-       Будь-яка інша помилка одного feed
-       не повинна валити весь Render.
-    */
-
-    console.log(
-      "FACEBOOK SCRAPE ERROR:",
-      url,
-      String(error)
-    );
-
-
-    return [];
+    
+      console.log(
+        "FACEBOOK SCRAPE ERROR:",
+        url,
+        String(error)
+      );
+    
+    
+      if (
+        String(error).includes(
+          "FACEBOOK_AUTH_REQUIRED"
+        )
+      ) {
+    
+        throw error;
+      }
+    
+    
+      return [];
 
 
   } finally {
