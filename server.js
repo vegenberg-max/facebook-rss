@@ -401,7 +401,40 @@ async function scrapeFacebook(url) {
     const page =
       await context.newPage();
 
+    try {
 
+      await page.goto(
+        "https://www.facebook.com/me",
+        {
+          waitUntil: "domcontentloaded",
+          timeout: 25000
+        }
+      );
+    
+    
+      await page.waitForTimeout(
+        2000
+      );
+    
+    
+      console.log(
+        "FACEBOOK AUTH TEST URL:",
+        page.url()
+      );
+    
+    
+      console.log(
+        "FACEBOOK AUTH TEST TITLE:",
+        await page.title()
+      );
+    
+    } catch (error) {
+    
+      console.log(
+        "FACEBOOK AUTH TEST ERROR:",
+        String(error)
+      );
+    }
     /*
        Відкриваємо Facebook.
 
