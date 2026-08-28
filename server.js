@@ -29,7 +29,8 @@ let facebookAuthBroken =
 
 
 async function sendTelegramAlert(
-  text
+  text,
+  pin = false
 ) {
 
   if (
@@ -41,32 +42,117 @@ async function sendTelegramAlert(
       "TELEGRAM ALERT SKIPPED: env not configured"
     );
 
-    return;
+    return null;
   }
 
 
   try {
 
-    await fetch(
-      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
-      {
-        method:
-          "POST",
+    const response =
+      await fetch(
+        `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+        {
+          method:
+            "POST",
 
-        headers: {
-          "Content-Type":
-            "application/json"
-        },
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
 
-        body:
-          JSON.stringify({
-            chat_id:
-              TELEGRAM_ADMIN_ID,
+          body:
+            JSON.stringify({
+              chat_id:
+                TELEGRAM_ADMIN_ID,
 
-            text
-          })
+              text,
+
+              disable_notification:
+                false
+            })
+        }
+      );
+
+
+    const result =
+      await response.json();
+
+
+    if (
+      !result.ok
+    ) {
+
+      console.log(
+        "TELEGRAM ALERT SEND ERROR:",
+        JSON.stringify(result)
+      );
+
+      return result;
+    }
+
+
+    /*
+       Якщо це важливе повідомлення
+       про Facebook cookies —
+       пробуємо його закріпити.
+    */
+
+    if (
+      pin &&
+      result.result?.message_id
+    ) {
+
+      try {
+
+        const pinResponse =
+          await fetch(
+            `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/pinChatMessage`,
+            {
+              method:
+                "POST",
+
+              headers: {
+                "Content-Type":
+                  "application/json"
+              },
+
+              body:
+                JSON.stringify({
+                  chat_id:
+                    TELEGRAM_ADMIN_ID,
+
+                  message_id:
+                    result.result.message_id,
+
+                  disable_notification:
+                    false
+                })
+            }
+          );
+
+
+        const pinResult =
+          await pinResponse.json();
+
+
+        console.log(
+          "TELEGRAM ALERT PIN:",
+          JSON.stringify(pinResult)
+        );
+
+
+      } catch (error) {
+
+        console.log(
+          "TELEGRAM ALERT PIN ERROR:",
+          String(error)
+        );
       }
-    );
+    }
+
+
+    return result;
+
 
   } catch (error) {
 
@@ -74,6 +160,8 @@ async function sendTelegramAlert(
       "TELEGRAM ALERT ERROR:",
       String(error)
     );
+
+    return null;
   }
 }
 
