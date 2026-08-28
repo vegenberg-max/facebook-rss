@@ -479,6 +479,47 @@ async function scrapeFacebook(url) {
       articleCount
     );
 
+    const debugArticles =
+      await page.locator(
+        '[role="article"]'
+      ).evaluateAll(
+        nodes =>
+          nodes
+            .slice(0, 10)
+            .map(
+              (node, index) => {
+    
+                const links =
+                  [...node.querySelectorAll("a")]
+                    .map(a => a.href)
+                    .filter(Boolean);
+    
+                return {
+                  index,
+                  text:
+                    (node.innerText || "")
+                      .slice(0, 300),
+    
+                  links:
+                    links.filter(
+                      href =>
+                        href.includes("/posts/") ||
+                        href.includes("/reel/") ||
+                        href.includes("/videos/") ||
+                        href.includes("story_fbid")
+                    )
+                };
+              }
+            )
+      );
+    
+    console.log(
+      "FACEBOOK ARTICLES DEBUG:",
+      url,
+      JSON.stringify(
+        debugArticles
+      )
+    );
 
     /*
        Беремо видимі пости.
