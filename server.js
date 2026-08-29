@@ -958,6 +958,155 @@ async function scrapeFacebook(url) {
     );
 
 
+        /*
+       Деякі Facebook-групи спочатку показують
+       тільки loading skeleton замість постів.
+    
+       Якщо всі знайдені article — loading-state,
+       пробуємо прокрутити сторінку і дочекатися
+       реального контенту.
+    */
+    
+    if (articleCount > 0) {
+    
+      const loadingArticleCount =
+        await page
+          .locator(
+            '[role="article"] [data-visualcompletion="loading-state"]'
+          )
+          .count();
+    
+    
+      console.log(
+        "FACEBOOK LOADING ARTICLES:",
+        loadingArticleCount,
+        "/",
+        articleCount
+      );
+    
+    
+      if (
+        loadingArticleCount >= articleCount
+      ) {
+    
+        console.log(
+          "FACEBOOK FEED STILL LOADING:",
+          url
+        );
+    
+    
+        /*
+           Прокручуємо сторінку,
+           щоб Facebook запустив lazy loading.
+        */
+    
+        await page.evaluate(() => {
+    
+          window.scrollBy(
+            0,
+            Math.max(
+              window.innerHeight,
+              900
+            )
+          );
+        });
+    
+    
+        await page.waitForTimeout(
+          3000
+        );
+    
+    
+        await page.evaluate(() => {
+    
+          window.scrollBy(
+            0,
+            Math.max(
+              window.innerHeight,
+              900
+            )
+          );
+        });
+    
+    
+        /*
+           Чекаємо максимум 10 секунд,
+           поки хоча б один article перестане
+           бути loading skeleton.
+        */
+    
+        try {
+    
+          await page.waitForFunction(
+            () => {
+    
+              const articles =
+                [
+                  ...document.querySelectorAll(
+                    '[role="article"]'
+                  )
+                ];
+    
+    
+              return articles.some(
+                article => {
+    
+                  const loading =
+                    article.querySelector(
+                      '[data-visualcompletion="loading-state"]'
+                    );
+    
+    
+                  const text =
+                    (
+                      article.innerText ||
+                      ""
+                    ).trim();
+    
+    
+                  const link =
+                    article.querySelector(
+                      'a[href]'
+                    );
+    
+    
+                  return (
+                    !loading &&
+                    (
+                      text.length > 0 ||
+                      !!link
+                    )
+                  );
+                }
+              );
+            },
+            {
+              timeout: 10000
+            }
+          );
+    
+    
+          console.log(
+            "FACEBOOK FEED LOADED AFTER RETRY:",
+            url
+          );
+    
+        } catch {
+    
+          console.log(
+            "FACEBOOK FEED STILL SKELETON AFTER RETRY:",
+            url
+          );
+        }
+    
+    
+        await page.waitForTimeout(
+          1000
+        );
+      }
+    }
+
+    
     const articleCount =
       await page.locator(
         '[role="article"]'
