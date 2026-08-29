@@ -958,7 +958,21 @@ async function scrapeFacebook(url) {
     );
 
 
-        /*
+
+    
+    const articleCount =
+      await page.locator(
+        '[role="article"]'
+      ).count();
+
+
+    console.log(
+      "ARTICLES FOUND:",
+      articleCount
+    );
+    
+    
+    /*
        Деякі Facebook-групи спочатку показують
        тільки loading skeleton замість постів.
     
@@ -995,11 +1009,6 @@ async function scrapeFacebook(url) {
         );
     
     
-        /*
-           Прокручуємо сторінку,
-           щоб Facebook запустив lazy loading.
-        */
-    
         await page.evaluate(() => {
     
           window.scrollBy(
@@ -1028,12 +1037,6 @@ async function scrapeFacebook(url) {
           );
         });
     
-    
-        /*
-           Чекаємо максимум 10 секунд,
-           поки хоча б один article перестане
-           бути loading skeleton.
-        */
     
         try {
     
@@ -1105,18 +1108,6 @@ async function scrapeFacebook(url) {
         );
       }
     }
-
-    
-    const articleCount =
-      await page.locator(
-        '[role="article"]'
-      ).count();
-
-
-    console.log(
-      "ARTICLES FOUND:",
-      articleCount
-    );
 
     const debugArticles =
       await page.locator(
