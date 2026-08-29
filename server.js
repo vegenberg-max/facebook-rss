@@ -1012,6 +1012,81 @@ async function scrapeFacebook(url) {
       )
     );
 
+        /*
+       Діагностика Facebook article,
+       які існують у DOM,
+       але не мають innerText/links.
+    */
+    
+    const emptyArticleCount =
+      debugArticles.filter(
+        article =>
+          !article.text &&
+          article.links.length === 0
+      ).length;
+    
+    
+    if (
+      articleCount > 0 &&
+      emptyArticleCount === articleCount
+    ) {
+    
+      const emptyArticlesDebug =
+        await page.locator(
+          '[role="article"]'
+        ).evaluateAll(
+          nodes =>
+            nodes
+              .slice(0, 4)
+              .map(
+                (node, index) => {
+    
+                  const images =
+                    [...node.querySelectorAll("img")]
+                      .map(img => ({
+                        src:
+                          img.src || "",
+    
+                        alt:
+                          img.alt || "",
+    
+                        ariaLabel:
+                          img.getAttribute(
+                            "aria-label"
+                          ) || ""
+                      }))
+                      .slice(0, 10);
+    
+    
+                  return {
+    
+                    index,
+    
+                    html:
+                      (node.innerHTML || "")
+                        .slice(0, 3000),
+    
+                    ariaLabel:
+                      node.getAttribute(
+                        "aria-label"
+                      ) || "",
+    
+                    images
+                  };
+                }
+              )
+        );
+    
+    
+      console.log(
+        "FACEBOOK EMPTY ARTICLES DEBUG:",
+        url,
+        JSON.stringify(
+          emptyArticlesDebug
+        )
+      );
+    }
+
     /*
        Беремо видимі пости.
     */
