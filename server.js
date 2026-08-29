@@ -245,12 +245,13 @@ function cleanFacebookPostUrl(url) {
   const value =
     String(url || "");
 
+
   const match =
     value.match(
       /https:\/\/www\.facebook\.com\/groups\/\d+\/posts\/\d+\//
     ) ||
     value.match(
-      /https:\/\/www\.facebook\.com\/[^\/\s]+\/posts\/\d+\//
+      /https:\/\/www\.facebook\.com\/[^\/\s]+\/posts\/[^\/?\s]+\//
     ) ||
     value.match(
       /https:\/\/www\.facebook\.com\/reel\/\d+\//
@@ -259,9 +260,77 @@ function cleanFacebookPostUrl(url) {
       /https:\/\/www\.facebook\.com\/[^\/\s]+\/videos\/\d+\//
     );
 
+
   if (match) {
+
     return match[0];
   }
+
+
+  /*
+     Старі/альтернативні Facebook permalink URL:
+
+     /permalink.php?story_fbid=XXX&id=YYY
+
+     Тут НЕ можна просто відкидати query string,
+     бо саме story_fbid та id визначають пост.
+  */
+
+  if (
+    value.includes("/permalink.php")
+  ) {
+
+    try {
+
+      const parsed =
+        new URL(value);
+
+
+      const storyFbid =
+        parsed.searchParams.get(
+          "story_fbid"
+        );
+
+
+      const id =
+        parsed.searchParams.get(
+          "id"
+        );
+
+
+      if (
+        storyFbid &&
+        id
+      ) {
+
+        return (
+          "https://www.facebook.com/permalink.php" +
+          "?story_fbid=" +
+          encodeURIComponent(storyFbid) +
+          "&id=" +
+          encodeURIComponent(id)
+        );
+      }
+
+
+      if (storyFbid) {
+
+        return (
+          "https://www.facebook.com/permalink.php" +
+          "?story_fbid=" +
+          encodeURIComponent(storyFbid)
+        );
+      }
+
+    } catch {
+    }
+  }
+
+
+  /*
+     Для інших Facebook URL
+     прибираємо службові параметри.
+  */
 
   return value.split("?")[0];
 }
@@ -927,7 +996,8 @@ async function scrapeFacebook(url) {
                         href.includes("/posts/") ||
                         href.includes("/reel/") ||
                         href.includes("/videos/") ||
-                        href.includes("story_fbid")
+                        href.includes("/permalink.php") ||
+                        href.includes("story_fbid=")
                     )
                 };
               }
@@ -975,7 +1045,9 @@ async function scrapeFacebook(url) {
                   href =>
                     href.includes("/posts/") ||
                     href.includes("/reel/") ||
-                    href.includes("/videos/")
+                    href.includes("/videos/") ||
+                    href.includes("/permalink.php") ||
+                    href.includes("story_fbid=")
                 ) || "";
 
 
