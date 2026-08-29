@@ -896,6 +896,13 @@ async function scrapeFacebook(url) {
 
     const finalFacebookUrl =
       page.url();
+
+    console.log(
+      "FACEBOOK FINAL URL:",
+      url,
+      "=>",
+      finalFacebookUrl
+    );
     
     
     if (
