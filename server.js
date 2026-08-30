@@ -1911,49 +1911,33 @@ app.get(
 
 
     /*
-       Перший запит після рестарту Render.
-
-       Щоб Cloudflare не чекав Chromium,
-       віддаємо порожній валідний RSS
-       і запускаємо заповнення кешу
-       у фоні.
-    */
-
-    updateFeedCache(
-      source
-    ).catch(
-      error =>
-        console.log(
-          "FIRST CACHE ERROR:",
-          String(error)
-        )
-    );
-
-
-    const emptyRss =
-      makeRss(
-        source,
-        []
-      );
-
-
-    res.set(
-      "Content-Type",
-      "application/rss+xml; charset=utf-8"
-    );
-
-
-    res.set(
-      "X-RSS-Cache",
-      "MISS"
-    );
-
-
-    return res.send(
-      emptyRss
-    );
-  }
-);
+     Перший запит після рестарту Render.
+  
+     Запускаємо заповнення кешу,
+     але НЕ прикидаємося, що RSS порожній.
+  */
+  
+  updateFeedCache(
+    source
+  ).catch(
+    error =>
+      console.log(
+        "FIRST CACHE ERROR:",
+        String(error)
+      )
+  );
+  
+  res.set(
+    "X-RSS-Cache",
+    "WARMING"
+  );
+  
+  return res.status(503).json({
+    ok: false,
+    warming: true,
+    feed: source.id,
+    message: "RSS cache is warming up"
+  });
 
 
 app.listen(
