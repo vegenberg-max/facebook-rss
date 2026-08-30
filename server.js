@@ -714,6 +714,183 @@ async function checkFacebookAuth() {
   }
 }
 
+async function getFacebookPostFullText(
+  context,
+  postUrl,
+  currentText = ""
+) {
+
+  if (!postUrl) {
+    return currentText;
+  }
+
+  const isVideo =
+    postUrl.includes("/reel/") ||
+    postUrl.includes("/videos/");
+
+  /*
+     Додатково відкриваємо сам пост тільки для
+     Reel/video. Звичайні пости не навантажуємо.
+  */
+
+  if (!isVideo) {
+    return currentText;
+  }
+
+  let page;
+
+  try {
+
+    page = await context.newPage();
+
+    console.log(
+      "FACEBOOK OPEN POST FOR FULL TEXT:",
+      postUrl
+    );
+
+    try {
+
+      await page.goto(
+        postUrl,
+        {
+          waitUntil: "domcontentloaded",
+          timeout: 20000
+        }
+      );
+
+    } catch (error) {
+
+      console.log(
+        "FACEBOOK FULL TEXT GOTO TIMEOUT:",
+        postUrl,
+        String(error)
+      );
+    }
+
+
+    await page.waitForTimeout(2500);
+
+
+    const fullText =
+      await page.evaluate(() => {
+
+        const candidates = [];
+
+
+        /*
+           1. Опис самого Facebook Reel/post.
+        */
+
+        const articles =
+          [
+            ...document.querySelectorAll(
+              '[role="article"]'
+            )
+          ];
+
+        for (const article of articles) {
+
+          const text =
+            (
+              article.innerText ||
+              ""
+            ).trim();
+
+          if (text) {
+            candidates.push(text);
+          }
+        }
+
+
+        /*
+           2. Facebook іноді тримає caption
+           поза role=article.
+        */
+
+        const textNodes =
+          [
+            ...document.querySelectorAll(
+              '[data-ad-preview="message"], ' +
+              '[data-ad-comet-preview="message"], ' +
+              '[data-testid="post_message"]'
+            )
+          ];
+
+        for (const node of textNodes) {
+
+          const text =
+            (
+              node.innerText ||
+              node.textContent ||
+              ""
+            ).trim();
+
+          if (text) {
+            candidates.push(text);
+          }
+        }
+
+
+        /*
+           Беремо найдовший змістовний варіант.
+        */
+
+        candidates.sort(
+          (a, b) =>
+            b.length - a.length
+        );
+
+        return candidates[0] || "";
+      });
+
+
+    console.log(
+      "FACEBOOK FULL TEXT:",
+      postUrl,
+      fullText.slice(0, 500)
+    );
+
+
+    /*
+       Не замінюємо старий текст гіршим/коротшим.
+    */
+
+    if (
+      fullText &&
+      fullText.length >
+        String(currentText || "").length
+    ) {
+
+      return fullText;
+    }
+
+
+    return currentText;
+
+
+  } catch (error) {
+
+    console.log(
+      "FACEBOOK FULL TEXT ERROR:",
+      postUrl,
+      String(error)
+    );
+
+    return currentText;
+
+
+  } finally {
+
+    if (page) {
+
+      try {
+        await page.close();
+      } catch {
+      }
+    }
+  }
+}
+
 async function scrapeFacebook(url) {
 
   const browser =
@@ -1090,6 +1267,7 @@ async function scrapeFacebook(url) {
                 }
               );
             },
+            null,
             {
               timeout: 10000
             }
@@ -1238,6 +1416,32 @@ async function scrapeFacebook(url) {
         }
       );
 
+    /*
+   Для Reel/video Facebook у стрічці іноді
+   віддає не caption поста, а короткий
+   сторонній текст.
+
+   Відкриваємо сам Reel і беремо повніший текст.
+  */
+  
+  for (const post of posts) {
+  
+    if (
+      post.postUrl &&
+      (
+        post.postUrl.includes("/reel/") ||
+        post.postUrl.includes("/videos/")
+      )
+    ) {
+  
+      post.text =
+        await getFacebookPostFullText(
+          context,
+          post.postUrl,
+          post.text
+        );
+    }
+  }
 
     const cleanedPosts =
       posts
