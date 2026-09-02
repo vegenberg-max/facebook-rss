@@ -2142,7 +2142,8 @@ app.get(
     feed: source.id,
     message: "RSS cache is warming up"
   });
-
+  }
+);
 
 app.listen(
   PORT,
