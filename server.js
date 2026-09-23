@@ -1379,21 +1379,198 @@ async function scrapeFacebook(url) {
               /*
                  Фото.
               */
-
               const images =
                 [
                   ...node.querySelectorAll(
                     "img"
                   )
                 ]
-                  .map(
-                    img =>
-                      img.src
+                  .flatMap(
+                    img => {
+              
+                      const candidates = [];
+              
+              
+                      /*
+                         Поточна URL картинки
+                      */
+                      if (
+                        img.src
+                      ) {
+                        candidates.push(
+                          {
+                            url:
+                              img.src,
+                            score:
+                              1
+                          }
+                        );
+                      }
+              
+              
+                      /*
+                         currentSrc може бути
+                         вже вибраною браузером
+                         більшою версією.
+                      */
+                      if (
+                        img.currentSrc
+                      ) {
+                        candidates.push(
+                          {
+                            url:
+                              img.currentSrc,
+                            score:
+                              2
+                          }
+                        );
+                      }
+              
+              
+                      /*
+                         Facebook часто ховає
+                         великі версії у srcset.
+                      */
+                      const srcset =
+                        img.getAttribute(
+                          "srcset"
+                        ) ||
+                        img.getAttribute(
+                          "data-srcset"
+                        );
+              
+              
+                      if (
+                        srcset
+                      ) {
+              
+                        for (
+                          const part
+                          of srcset.split(",")
+                        ) {
+              
+                          const pieces =
+                            part.trim()
+                              .split(
+                                /\s+/
+                              );
+              
+              
+                          const url =
+                            pieces[0];
+              
+              
+                          if (
+                            !url ||
+                            !url.startsWith(
+                              "http"
+                            )
+                          ) {
+                            continue;
+                          }
+              
+              
+                          let score =
+                            3;
+              
+              
+                          const descriptor =
+                            pieces[1] ||
+                            "";
+              
+              
+                          /*
+                             1200w -> score 1200
+                             2x    -> score 2000
+                          */
+                          if (
+                            descriptor.endsWith(
+                              "w"
+                            )
+                          ) {
+              
+                            score =
+                              parseFloat(
+                                descriptor
+                              );
+              
+                          } else if (
+                            descriptor.endsWith(
+                              "x"
+                            )
+                          ) {
+              
+                            score =
+                              parseFloat(
+                                descriptor
+                              ) * 1000;
+                          }
+              
+              
+                          candidates.push(
+                            {
+                              url,
+                              score
+                            }
+                          );
+                        }
+                      }
+              
+              
+                      /*
+                         data-src — запасний варіант
+                      */
+                      const dataSrc =
+                        img.getAttribute(
+                          "data-src"
+                        );
+              
+              
+                      if (
+                        dataSrc &&
+                        dataSrc.startsWith(
+                          "http"
+                        )
+                      ) {
+              
+                        candidates.push(
+                          {
+                            url:
+                              dataSrc,
+                            score:
+                              2.5
+                          }
+                        );
+                      }
+              
+              
+                      /*
+                         Беремо найбільшу доступну
+                         версію картинки.
+                      */
+                      candidates.sort(
+                        (
+                          a,
+                          b
+                        ) =>
+                          b.score -
+                          a.score
+                      );
+              
+              
+                      return candidates.length
+                        ? [
+                            candidates[0].url
+                          ]
+                        : [];
+                    }
                   )
                   .filter(
                     src =>
                       src &&
-                      src.startsWith("http")
+                      src.startsWith(
+                        "http"
+                      )
                   );
 
 
