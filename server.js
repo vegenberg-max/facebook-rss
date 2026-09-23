@@ -891,6 +891,162 @@ async function getFacebookPostFullText(
   }
 }
 
+async function getFacebookPostImages(
+  context,
+  postUrl,
+  currentImages = []
+) {
+  if (!postUrl) {
+    return currentImages;
+  }
+
+  let page;
+
+  try {
+    page = await context.newPage();
+
+    console.log(
+      "FACEBOOK OPEN POST FOR ORIGINAL IMAGES:",
+      postUrl
+    );
+
+    try {
+      await page.goto(
+        postUrl,
+        {
+          waitUntil: "domcontentloaded",
+          timeout: 20000
+        }
+      );
+    } catch (error) {
+      console.log(
+        "FACEBOOK ORIGINAL IMAGES GOTO TIMEOUT:",
+        postUrl,
+        String(error)
+      );
+    }
+
+    await page.waitForTimeout(2500);
+
+    const originalImages =
+      await page.evaluate(() => {
+
+        const result = [];
+
+        /*
+         * 1. OG IMAGE — Facebook часто кладе сюди
+         * найбільш якісне прев'ю самого поста.
+         */
+        const ogImages =
+          [
+            ...document.querySelectorAll(
+              'meta[property="og:image"], meta[name="og:image"]'
+            )
+          ]
+            .map(meta =>
+              meta.getAttribute("content")
+            )
+            .filter(
+              url =>
+                url &&
+                url.startsWith("http")
+            );
+
+        result.push(...ogImages);
+
+
+        /*
+         * 2. image_src
+         */
+        const imageSrc =
+          document
+            .querySelector(
+              'link[rel="image_src"]'
+            )
+            ?.getAttribute("href");
+
+        if (
+          imageSrc &&
+          imageSrc.startsWith("http")
+        ) {
+          result.push(imageSrc);
+        }
+
+
+        /*
+         * 3. Великі Facebook CDN URL,
+         * які вже є в HTML/JSON сторінки.
+         */
+        const html =
+          document.documentElement.outerHTML;
+
+        const fbUrls =
+          html.match(
+            /https?:\/\/[^"'\\\s<>]+(?:fbcdn\.net|facebook\.com)[^"'\\\s<>]*/gi
+          ) || [];
+
+        for (const url of fbUrls) {
+          if (
+            /\.(jpg|jpeg|png|webp)(?:[?&]|$)/i.test(
+              url
+            ) ||
+            url.includes("scontent")
+          ) {
+            result.push(
+              url
+                .replace(/\\u0025/g, "%")
+                .replace(/\\u0026/g, "&")
+                .replace(/\\\//g, "/")
+            );
+          }
+        }
+
+
+        return [
+          ...new Set(result)
+        ];
+      });
+
+
+    console.log(
+      "FACEBOOK ORIGINAL IMAGES FOUND:",
+      originalImages.length
+    );
+
+    /*
+     * Якщо сторінка поста дала картинки —
+     * використовуємо їх.
+     *
+     * Якщо ні — залишаємо старі картинки.
+     */
+    if (
+      originalImages.length > 0
+    ) {
+      return originalImages;
+    }
+
+    return currentImages;
+
+  } catch (error) {
+
+    console.log(
+      "FACEBOOK ORIGINAL IMAGES ERROR:",
+      postUrl,
+      String(error)
+    );
+
+    return currentImages;
+
+  } finally {
+
+    if (page) {
+      try {
+        await page.close();
+      } catch {}
+    }
+  }
+}
+
 async function scrapeFacebook(url) {
 
   const browser =
@@ -1602,13 +1758,17 @@ async function scrapeFacebook(url) {
   */
   
   for (const post of posts) {
+
+    if (!post.postUrl) {
+      continue;
+    }
   
+    /*
+     * Для Reel/video забираємо повний текст.
+     */
     if (
-      post.postUrl &&
-      (
-        post.postUrl.includes("/reel/") ||
-        post.postUrl.includes("/videos/")
-      )
+      post.postUrl.includes("/reel/") ||
+      post.postUrl.includes("/videos/")
     ) {
   
       post.text =
@@ -1618,6 +1778,18 @@ async function scrapeFacebook(url) {
           post.text
         );
     }
+  
+    /*
+     * Відкриваємо сам Facebook-пост
+     * і пробуємо отримати оригінальне
+     * зображення замість thumbnail зі стрічки.
+     */
+    post.images =
+      await getFacebookPostImages(
+        context,
+        post.postUrl,
+        post.images
+      );
   }
 
     const cleanedPosts =
