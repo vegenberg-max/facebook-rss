@@ -2463,27 +2463,133 @@ app.get(
     }
 
 
-    /*
-     Перший запит після рестарту Render.
-  
-     Запускаємо заповнення кешу,
-     але НЕ прикидаємося, що RSS порожній.
-  */
-  
-  updateFeedCache(
+/*
+   Перший запит після рестарту Render.
+
+   Якщо кешу ще немає — чекаємо, поки
+   конкретний RSS буде створений.
+
+   Після цього віддаємо нормальний RSS,
+   а не HTTP 503 warming.
+*/
+
+console.log(
+  "FIRST RSS CACHE WAIT:",
+  source.id
+);
+
+try {
+
+  await updateFeedCache(
     source
-  ).catch(
-    error =>
-      console.log(
-        "FIRST CACHE ERROR:",
-        String(error)
-      )
   );
-  
-  res.set(
-    "X-RSS-Cache",
-    "WARMING"
+
+  /*
+     updateFeedCache може вже виконуватися
+     через загальний warmup після старту.
+     У такому випадку чекаємо, поки
+     конкретний feed з'явиться в кеші.
+  */
+
+  const waitStarted =
+    Date.now();
+
+  while (
+    !rssCache.has(source.id) &&
+    Date.now() - waitStarted < 120000
+  ) {
+
+    await new Promise(
+      resolve =>
+        setTimeout(
+          resolve,
+          500
+        )
+    );
+  }
+
+
+  const freshCache =
+    rssCache.get(
+      source.id
+    );
+
+
+  if (
+    freshCache
+  ) {
+
+    console.log(
+      "FIRST RSS CACHE READY:",
+      source.id,
+      "POSTS:",
+      freshCache.posts
+    );
+
+
+    res.set(
+      "Content-Type",
+      "application/rss+xml; charset=utf-8"
+    );
+
+    res.set(
+      "X-RSS-Cache",
+      "MISS"
+    );
+
+    res.set(
+      "X-RSS-Updated",
+      new Date(
+        freshCache.updatedAt
+      ).toISOString()
+    );
+
+
+    return res.send(
+      freshCache.rss
+    );
+  }
+
+
+  /*
+     За 120 секунд кеш так і не з'явився.
+  */
+
+  console.log(
+    "FIRST RSS CACHE TIMEOUT:",
+    source.id
   );
+
+
+  return res
+    .status(503)
+    .json({
+      ok: false,
+      warming: true,
+      feed: source.id,
+      message:
+        "RSS cache is still warming up"
+    });
+
+
+} catch (error) {
+
+  console.log(
+    "FIRST RSS CACHE ERROR:",
+    source.id,
+    String(error)
+  );
+
+
+  return res
+    .status(500)
+    .json({
+      ok: false,
+      feed: source.id,
+      message:
+        "RSS cache update failed"
+    });
+}
   
   return res.status(503).json({
     ok: false,
