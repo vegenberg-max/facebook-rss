@@ -2496,7 +2496,7 @@ try {
 
   while (
     !rssCache.has(source.id) &&
-    Date.now() - waitStarted < 120000
+    Date.now() - waitStarted < 30000
   ) {
 
     await new Promise(
