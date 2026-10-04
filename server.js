@@ -366,108 +366,80 @@ let facebookScrapeQueue =
    /feed/:id більше не чекатиме Facebook.
 */
 
-const rssCache =
-  new Map();
+const rssCache = new Map();
 
-const rssUpdating =
-  new Set();
+// Зберігаємо самі Promise, щоб кілька запитів
+// одного RSS чекали на одне оновлення.
+const rssUpdating = new Map();
 
 
-async function updateFeedCache(
-  source
-) {
+async function updateFeedCache(source) {
+  const id = String(source.id);
 
-  if (
-    rssUpdating.has(
-      source.id
-    )
-  ) {
-    return;
+  // Якщо цей RSS уже оновлюється,
+  // повертаємо поточну задачу.
+  if (rssUpdating.has(id)) {
+    return rssUpdating.get(id);
   }
 
+  const task = (async () => {
+    console.log("CACHE UPDATE START:", id);
 
-  rssUpdating.add(
-    source.id
-  );
-
-
-  try {
-
-    console.log(
-      "CACHE UPDATE START:",
-      source.id
-    );
-
-
-    const posts =
-      await scrapeFacebookQueued(
+    try {
+      const posts = await scrapeFacebookQueued(
         source.url
       );
 
+      // Порожній результат не вважаємо
+      // успішним оновленням.
+      if (!Array.isArray(posts) || posts.length === 0) {
+        console.log(
+          "CACHE EMPTY:",
+          id,
+          "KEEPING OLD CACHE"
+        );
 
-    /*
-       Якщо Facebook тимчасово нічого
-       не повернув, старий хороший кеш
-       не стираємо.
-    */
+        return rssCache.get(id) || null;
+      }
 
-    if (
-      posts.length === 0 &&
-      rssCache.has(
-        source.id
-      )
-    ) {
+      const rss = makeRss(source, posts);
+
+      const entry = {
+        rss,
+        posts: posts.length,
+        updatedAt: Date.now()
+      };
+
+      rssCache.set(id, entry);
 
       console.log(
-        "CACHE KEEP OLD:",
-        source.id
+        "CACHE UPDATE OK:",
+        id,
+        "POSTS:",
+        posts.length
       );
 
-      return;
+      return entry;
+
+    } catch (error) {
+      console.error(
+        "CACHE UPDATE ERROR:",
+        id,
+        error
+      );
+
+      return rssCache.get(id) || null;
     }
+  })();
 
+  rssUpdating.set(id, task);
 
-    const rss =
-      makeRss(
-        source,
-        posts
-      );
-
-
-    rssCache.set(
-      source.id,
-      {
-        rss,
-        posts:
-          posts.length,
-        updatedAt:
-          Date.now()
-      }
-    );
-
-
-    console.log(
-      "CACHE UPDATE OK:",
-      source.id,
-      "POSTS:",
-      posts.length
-    );
-
-
-  } catch (error) {
-
-    console.log(
-      "CACHE UPDATE ERROR:",
-      source.id,
-      String(error)
-    );
-
-
+  try {
+    return await task;
   } finally {
-
-    rssUpdating.delete(
-      source.id
-    );
+    if (rssUpdating.get(id) === task) {
+      rssUpdating.delete(id);
+    }
   }
 }
 
@@ -2463,140 +2435,44 @@ app.get(
     }
 
 
-/*
-   Перший запит після рестарту Render.
+// Перший запит, коли готового кешу немає.
 
-   Якщо кешу ще немає — чекаємо, поки
-   конкретний RSS буде створений.
+const feedId = String(source.id);
 
-   Після цього віддаємо нормальний RSS,
-   а не HTTP 503 warming.
-*/
+// Запускаємо створення кешу,
+// якщо воно ще не виконується.
+updateFeedCache(source).catch(error => {
+  console.error(
+    "FIRST CACHE ERROR:",
+    feedId,
+    error
+  );
+});
 
-console.log(
-  "FIRST RSS CACHE WAIT:",
-  source.id
+// Не тримаємо HTTP-запит відкритим 30 секунд.
+// Клієнт зможе повторити запит пізніше.
+res.set(
+  "Cache-Control",
+  "no-store"
 );
 
-try {
+res.set(
+  "Retry-After",
+  "20"
+);
 
-  await updateFeedCache(
-    source
-  );
+res.set(
+  "X-RSS-Cache",
+  "WARMING"
+);
 
-  /*
-     updateFeedCache може вже виконуватися
-     через загальний warmup після старту.
-     У такому випадку чекаємо, поки
-     конкретний feed з'явиться в кеші.
-  */
-
-  const waitStarted =
-    Date.now();
-
-  while (
-    !rssCache.has(source.id) &&
-    Date.now() - waitStarted < 30000
-  ) {
-
-    await new Promise(
-      resolve =>
-        setTimeout(
-          resolve,
-          500
-        )
-    );
-  }
-
-
-  const freshCache =
-    rssCache.get(
-      source.id
-    );
-
-
-  if (
-    freshCache
-  ) {
-
-    console.log(
-      "FIRST RSS CACHE READY:",
-      source.id,
-      "POSTS:",
-      freshCache.posts
-    );
-
-
-    res.set(
-      "Content-Type",
-      "application/rss+xml; charset=utf-8"
-    );
-
-    res.set(
-      "X-RSS-Cache",
-      "MISS"
-    );
-
-    res.set(
-      "X-RSS-Updated",
-      new Date(
-        freshCache.updatedAt
-      ).toISOString()
-    );
-
-
-    return res.send(
-      freshCache.rss
-    );
-  }
-
-
-  /*
-     За 120 секунд кеш так і не з'явився.
-  */
-
-  console.log(
-    "FIRST RSS CACHE TIMEOUT:",
-    source.id
-  );
-
-
-  return res
-    .status(503)
-    .json({
-      ok: false,
-      warming: true,
-      feed: source.id,
-      message:
-        "RSS cache is still warming up"
-    });
-
-
-} catch (error) {
-
-  console.log(
-    "FIRST RSS CACHE ERROR:",
-    source.id,
-    String(error)
-  );
-
-
-  return res
-    .status(500)
-    .json({
-      ok: false,
-      feed: source.id,
-      message:
-        "RSS cache update failed"
-    });
-}
-  
-  return res.status(503).json({
-    ok: false,
-    warming: true,
-    feed: source.id,
-    message: "RSS cache is warming up"
-  });
+return res.status(503).json({
+  ok: false,
+  warming: true,
+  feed: feedId,
+  retryAfter: 20,
+  message: "RSS cache is warming up"
+});
   }
 );
 
@@ -2617,34 +2493,53 @@ app.listen(
        поставить їх у чергу.
     */
 
-    setTimeout(
-      () => {
-    
+    // Прогріваємо RSS послідовно.
+// Не ставимо всі джерела в чергу одночасно.
+
+setTimeout(() => {
+  console.log("STARTING RSS CACHE WARMUP");
+
+  (async () => {
+    for (const source of SOURCES) {
+
+      // Якщо джерело вже готове,
+      // повторно його не обробляємо.
+      if (rssCache.has(String(source.id))) {
+        continue;
+      }
+
+      try {
         console.log(
-          "STARTING RSS CACHE WARMUP"
+          "WARMUP FEED:",
+          source.id
         );
-    
-    
-        for (
-          const source
-          of SOURCES
-        ) {
-    
-          updateFeedCache(
-            source
-          ).catch(
-            error =>
-              console.log(
-                "WARMUP ERROR:",
-                source.id,
-                String(error)
-              )
-          );
-        }
-    
-      },
-      5000
+
+        await updateFeedCache(source);
+
+      } catch (error) {
+        console.error(
+          "WARMUP ERROR:",
+          source.id,
+          error
+        );
+      }
+
+      // Невелика пауза між джерелами.
+      await new Promise(resolve =>
+        setTimeout(resolve, 1000)
+      );
+    }
+
+    console.log("RSS CACHE WARMUP FINISHED");
+
+  })().catch(error => {
+    console.error(
+      "RSS WARMUP FAILED:",
+      error
     );
+  });
+
+}, 5000);
     
     
     /*
