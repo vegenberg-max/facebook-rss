@@ -1258,24 +1258,36 @@ if (!isFacebookGroup) {
     try {
 
       /*
-         Повторно відкриваємо ту саму Page.
-
-         reload() тут навмисно не використовуємо:
-         новий goto змушує Facebook повторно
-         пройти навігацію сторінки.
+         Для звичайних Facebook Pages/Profile
+         пробуємо відкрити саме вкладку Posts.
       */
-
+    
+      const recoveryUrl =
+        new URL(url);
+    
+      recoveryUrl.searchParams.set(
+        "sk",
+        "posts"
+      );
+    
+    
+      console.log(
+        "FACEBOOK PAGE RECOVERY URL:",
+        recoveryUrl.toString()
+      );
+    
+    
       await page.goto(
-        url,
+        recoveryUrl.toString(),
         {
           waitUntil:
             "domcontentloaded",
-
+    
           timeout:
             25000
         }
       );
-
+    
     } catch (error) {
 
       console.log(
