@@ -1282,7 +1282,147 @@ async function scrapeFacebook(url) {
       "ARTICLES FOUND:",
       articleCount
     );
-    
+
+    /*
+   ДІАГНОСТИКА FACEBOOK PAGES.
+
+   Якщо role="article" взагалі немає,
+   дивимося, що Facebook реально
+   відрендерив на сторінці.
+*/
+
+if (articleCount === 0) {
+
+  const zeroArticlesDebug =
+    await page.evaluate(() => {
+
+      const bodyText =
+        (
+          document.body?.innerText ||
+          ""
+        )
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 2000);
+
+
+      const allLinks =
+        [
+          ...document.querySelectorAll(
+            "a[href]"
+          )
+        ]
+          .map(a => a.href)
+          .filter(Boolean);
+
+
+      const postLinks =
+        [
+          ...new Set(
+            allLinks.filter(
+              href =>
+                href.includes("/posts/") ||
+                href.includes("/reel/") ||
+                href.includes("/videos/") ||
+                href.includes("/permalink.php") ||
+                href.includes("story_fbid=")
+            )
+          )
+        ]
+          .slice(0, 20);
+
+
+      const dialogTexts =
+        [
+          ...document.querySelectorAll(
+            '[role="dialog"]'
+          )
+        ]
+          .map(node =>
+            (
+              node.innerText ||
+              ""
+            )
+              .replace(/\s+/g, " ")
+              .trim()
+              .slice(0, 500)
+          )
+          .filter(Boolean)
+          .slice(0, 5);
+
+
+      const mainText =
+        (
+          document.querySelector(
+            '[role="main"]'
+          )?.innerText ||
+          ""
+        )
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 2000);
+
+
+      return {
+        bodyText,
+        mainText,
+        postLinks,
+        dialogTexts,
+        linksCount:
+          allLinks.length,
+
+        htmlLength:
+          document.documentElement
+            ?.outerHTML
+            ?.length || 0
+      };
+    });
+
+
+  console.log(
+    "FACEBOOK ZERO ARTICLES BODY:",
+    url,
+    zeroArticlesDebug.bodyText
+  );
+
+
+  console.log(
+    "FACEBOOK ZERO ARTICLES MAIN:",
+    url,
+    zeroArticlesDebug.mainText
+  );
+
+
+  console.log(
+    "FACEBOOK ZERO ARTICLES POST LINKS:",
+    url,
+    JSON.stringify(
+      zeroArticlesDebug.postLinks
+    )
+  );
+
+
+  console.log(
+    "FACEBOOK ZERO ARTICLES DIALOGS:",
+    url,
+    JSON.stringify(
+      zeroArticlesDebug.dialogTexts
+    )
+  );
+
+
+  console.log(
+    "FACEBOOK ZERO ARTICLES STATS:",
+    url,
+    JSON.stringify({
+      linksCount:
+        zeroArticlesDebug.linksCount,
+
+      htmlLength:
+        zeroArticlesDebug.htmlLength
+    })
+  );
+}
     
     /*
        Деякі Facebook-групи спочатку показують
