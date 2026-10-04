@@ -1223,43 +1223,27 @@ if (!isFacebookGroup) {
 
   const hasPageContent =
     await page.evaluate(() => {
-
-      const main =
-        document.querySelector(
-          '[role="main"]'
-        );
-
-      const mainText =
-        (
-          main?.innerText ||
-          ""
-        ).trim();
-
-
-      const postLink =
+  
+      const links =
         [
           ...document.querySelectorAll(
             'a[href]'
           )
-        ].some(a => {
-
-          const href =
-            a.href || "";
-
-          return (
-            href.includes("/posts/") ||
-            href.includes("/reel/") ||
-            href.includes("/videos/") ||
-            href.includes("/permalink.php") ||
-            href.includes("story_fbid=")
-          );
-        });
-
-
-      return (
-        mainText.length > 20 ||
-        postLink
-      );
+        ]
+          .map(a => a.href)
+          .filter(Boolean);
+  
+  
+      return links.some(href => {
+  
+        return (
+          href.includes("/posts/") ||
+          /\/reel\/\d+/.test(href) ||
+          /\/videos\/\d+/.test(href) ||
+          href.includes("/permalink.php") ||
+          href.includes("story_fbid=")
+        );
+      });
     });
 
 
