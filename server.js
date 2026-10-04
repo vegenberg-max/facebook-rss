@@ -1751,17 +1751,28 @@ async function scrapeFacebook(url) {
         );
     }
   
-    /*
-     * Відкриваємо сам Facebook-пост
-     * і пробуємо отримати оригінальне
-     * зображення замість thumbnail зі стрічки.
-     */
-    post.images =
-      await getFacebookPostImages(
-        context,
-        post.postUrl,
-        post.images
-      );
+  /*
+ * Не відкриваємо кожен звичайний пост вдруге.
+ * Це сильно гальмує RSS на Render.
+ *
+ * Для Reel/video сторінка вже відкривається
+ * окремо для отримання повного тексту,
+ * тому додатковий пошук картинки залишаємо
+ * тільки для них.
+ */
+
+const isVideoPost =
+  post.postUrl.includes("/reel/") ||
+  post.postUrl.includes("/videos/");
+
+if (isVideoPost) {
+  post.images =
+    await getFacebookPostImages(
+      context,
+      post.postUrl,
+      post.images
+    );
+}
   }
 
     const cleanedPosts =
@@ -2542,19 +2553,6 @@ setTimeout(() => {
 }, 5000);
     
     
-    /*
-     * Перевіряємо Facebook-сесію
-     * одразу після запуску Render.
-     */
-    
-    checkFacebookAuth()
-      .catch(
-        error =>
-          console.log(
-            "INITIAL FACEBOOK AUTH CHECK ERROR:",
-            String(error)
-          )
-      );
     
     
     /*
