@@ -1196,11 +1196,207 @@ async function scrapeFacebook(url) {
     */
 
     await page.waitForTimeout(
+  3000
+);
+
+
+/*
+   FACEBOOK PAGE RECOVERY
+
+   Facebook Groups на Render завантажуються
+   нормально, тому їх не чіпаємо.
+
+   Для звичайних Facebook Pages/Profile
+   перевіряємо, чи реально з'явився контент.
+
+   Якщо Facebook віддав тільки порожню
+   оболонку — робимо одну повторну навігацію.
+*/
+
+const isFacebookGroup =
+  url.includes(
+    "facebook.com/groups/"
+  );
+
+
+if (!isFacebookGroup) {
+
+  const hasPageContent =
+    await page.evaluate(() => {
+
+      const main =
+        document.querySelector(
+          '[role="main"]'
+        );
+
+      const mainText =
+        (
+          main?.innerText ||
+          ""
+        ).trim();
+
+
+      const postLink =
+        [
+          ...document.querySelectorAll(
+            'a[href]'
+          )
+        ].some(a => {
+
+          const href =
+            a.href || "";
+
+          return (
+            href.includes("/posts/") ||
+            href.includes("/reel/") ||
+            href.includes("/videos/") ||
+            href.includes("/permalink.php") ||
+            href.includes("story_fbid=")
+          );
+        });
+
+
+      return (
+        mainText.length > 20 ||
+        postLink
+      );
+    });
+
+
+  if (!hasPageContent) {
+
+    console.log(
+      "FACEBOOK PAGE EMPTY, RETRY:",
+      url
+    );
+
+
+    try {
+
+      /*
+         Повторно відкриваємо ту саму Page.
+
+         reload() тут навмисно не використовуємо:
+         новий goto змушує Facebook повторно
+         пройти навігацію сторінки.
+      */
+
+      await page.goto(
+        url,
+        {
+          waitUntil:
+            "domcontentloaded",
+
+          timeout:
+            25000
+        }
+      );
+
+    } catch (error) {
+
+      console.log(
+        "FACEBOOK PAGE RETRY GOTO ERROR:",
+        url,
+        String(error)
+      );
+    }
+
+
+    /*
+       Даємо React Facebook більше часу
+       після повторної навігації.
+    */
+
+    await page.waitForTimeout(
+      5000
+    );
+
+
+    /*
+       Один scroll іноді запускає
+       lazy-loading стрічки Page.
+    */
+
+    await page.evaluate(() => {
+
+      window.scrollBy(
+        0,
+        Math.max(
+          window.innerHeight,
+          900
+        )
+      );
+
+    });
+
+
+    await page.waitForTimeout(
       3000
     );
 
-    const finalFacebookUrl =
-      page.url();
+
+    const recoveryDebug =
+      await page.evaluate(() => {
+
+        const main =
+          document.querySelector(
+            '[role="main"]'
+          );
+
+
+        const mainText =
+          (
+            main?.innerText ||
+            ""
+          )
+            .replace(/\s+/g, " ")
+            .trim();
+
+
+        const postLinks =
+          [
+            ...document.querySelectorAll(
+              'a[href]'
+            )
+          ]
+            .map(a => a.href)
+            .filter(
+              href =>
+                href &&
+                (
+                  href.includes("/posts/") ||
+                  href.includes("/reel/") ||
+                  href.includes("/videos/") ||
+                  href.includes("/permalink.php") ||
+                  href.includes("story_fbid=")
+                )
+            );
+
+
+        return {
+          mainLength:
+            mainText.length,
+
+          postLinks:
+            [...new Set(postLinks)]
+              .slice(0, 10)
+        };
+      });
+
+
+    console.log(
+      "FACEBOOK PAGE RECOVERY RESULT:",
+      url,
+      JSON.stringify(
+        recoveryDebug
+      )
+    );
+  }
+}
+
+
+const finalFacebookUrl =
+  page.url();
 
     console.log(
       "FACEBOOK FINAL URL:",
