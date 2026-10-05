@@ -182,6 +182,51 @@ function escapeXml(value) {
     .replace(/'/g, "&apos;");
 }
 
+function maximizeFacebookImageUrl(
+  rawUrl
+) {
+
+  const url =
+    String(rawUrl || "");
+
+  if (
+    !url ||
+    !url.includes("fbcdn.net")
+  ) {
+    return url;
+  }
+
+
+  const maxSize =
+    url.match(
+      /(?:[?&]|%26)cstp=mx(\d+)x(\d+)/i
+    ) ||
+
+    url.match(
+      /(?:[?&]|%26)stp=[^&]*?mx(\d+)x(\d+)/i
+    );
+
+
+  if (
+    !maxSize
+  ) {
+    return url;
+  }
+
+
+  const width =
+    maxSize[1];
+
+  const height =
+    maxSize[2];
+
+
+  return url.replace(
+    /([?&]ctp=)s\d+x\d+/i,
+    `$1s${width}x${height}`
+  );
+}
+
 function cleanFacebookPostText(text) {
 
   return String(text || "")
@@ -2780,7 +2825,11 @@ function makeRss(
           post.images
             .map(
               image =>
-                `<img src="${escapeXml(image)}">`
+                `<img src="${escapeXml(
+                  maximizeFacebookImageUrl(
+                    image
+                  )
+                )}">`
             )
             .join("");
 
