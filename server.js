@@ -2240,7 +2240,31 @@ if (articleCount === 0) {
                       return;
                     }
               
-                    const cleanUrl = imageUrl.replace(/&amp;/g, "&");
+                    let cleanUrl = imageUrl.replace(/&amp;/g, "&");
+
+                    /*
+                       Для external Facebook preview
+                       беремо оригінальну картинку з url=.
+                    */
+                    try {
+                      const parsedUrl = new URL(cleanUrl);
+                    
+                      if (
+                        parsedUrl.hostname.includes("external-") &&
+                        parsedUrl.hostname.endsWith(".fbcdn.net")
+                      ) {
+                        const originalUrl =
+                          parsedUrl.searchParams.get("url");
+                    
+                        if (
+                          originalUrl &&
+                          originalUrl.startsWith("http")
+                        ) {
+                          cleanUrl = originalUrl;
+                        }
+                      }
+                    } catch {
+                    }
               
                     let width = 0;
                     let height = 0;
