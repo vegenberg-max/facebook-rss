@@ -868,29 +868,42 @@ async function getFacebookPostImages(
   postUrl,
   currentImages = []
 ) {
+
   if (!postUrl) {
     return currentImages;
   }
 
+
   let page;
 
+
   try {
-    page = await context.newPage();
+
+    page =
+      await context.newPage();
+
 
     console.log(
       "FACEBOOK OPEN POST FOR ORIGINAL IMAGES:",
       postUrl
     );
 
+
     try {
+
       await page.goto(
         postUrl,
         {
-          waitUntil: "domcontentloaded",
-          timeout: 20000
+          waitUntil:
+            "domcontentloaded",
+
+          timeout:
+            20000
         }
       );
+
     } catch (error) {
+
       console.log(
         "FACEBOOK ORIGINAL IMAGES GOTO TIMEOUT:",
         postUrl,
@@ -898,86 +911,601 @@ async function getFacebookPostImages(
       );
     }
 
-    await page.waitForTimeout(2500);
 
-    const originalImages =
+    await page.waitForTimeout(
+      2500
+    );
+
+
+    /*
+       Шукаємо картинки саме всередині
+       Facebook article поста.
+
+       Не скануємо весь HTML сторінки,
+       тому аватарки, рекомендації,
+       реклама та сусідні Reel сюди
+       не повинні потрапляти.
+    */
+
+    const postImages =
       await page.evaluate(() => {
 
-        const result = [];
-
-        /*
-         * 1. OG IMAGE — Facebook часто кладе сюди
-         * найбільш якісне прев'ю самого поста.
-         */
-        const ogImages =
+        const articles =
           [
             ...document.querySelectorAll(
-              'meta[property="og:image"], meta[name="og:image"]'
+              '[role="article"]'
             )
-          ]
-            .map(meta =>
-              meta.getAttribute("content")
-            )
-            .filter(
-              url =>
-                url &&
-                url.startsWith("http")
-            );
-
-        result.push(...ogImages);
+          ];
 
 
         /*
-         * 2. image_src
-         */
-        const imageSrc =
-          document
-            .querySelector(
-              'link[rel="image_src"]'
-            )
-            ?.getAttribute("href");
+           Спочатку шукаємо article,
+           в якому є permalink поточного поста.
 
-        if (
-          imageSrc &&
-          imageSrc.startsWith("http")
+           Якщо Facebook відкрив пост
+           у modal/dialog — перший нормальний
+           article зазвичай і є потрібним.
+        */
+
+        let targetArticle =
+          null;
+
+
+        for (
+          const article
+          of articles
         ) {
-          result.push(imageSrc);
-        }
+
+          const links =
+            [
+              ...article.querySelectorAll(
+                "a[href]"
+              )
+            ]
+              .map(
+                link =>
+                  link.href || ""
+              );
 
 
-        /*
-         * 3. Великі Facebook CDN URL,
-         * які вже є в HTML/JSON сторінки.
-         */
-        const html =
-          document.documentElement.outerHTML;
-
-        const fbUrls =
-          html.match(
-            /https?:\/\/[^"'\\\s<>]+(?:fbcdn\.net|facebook\.com)[^"'\\\s<>]*/gi
-          ) || [];
-
-        for (const url of fbUrls) {
-          if (
-            /\.(jpg|jpeg|png|webp)(?:[?&]|$)/i.test(
-              url
-            ) ||
-            url.includes("scontent")
-          ) {
-            result.push(
-              url
-                .replace(/\\u0025/g, "%")
-                .replace(/\\u0026/g, "&")
-                .replace(/\\\//g, "/")
+          const hasPostLink =
+            links.some(
+              href =>
+                href.includes(
+                  "/posts/"
+                ) ||
+                href.includes(
+                  "/permalink.php"
+                ) ||
+                href.includes(
+                  "story_fbid="
+                ) ||
+                href.includes(
+                  "/reel/"
+                ) ||
+                href.includes(
+                  "/videos/"
+                )
             );
+
+
+          if (hasPostLink) {
+
+            targetArticle =
+              article;
+
+            break;
           }
         }
 
 
-        return [
-          ...new Set(result)
-        ];
+        /*
+           Якщо permalink Facebook
+           у DOM не залишив —
+           беремо найбільший article.
+
+           Коментарі зазвичай значно менші.
+        */
+
+        if (!targetArticle) {
+
+          const ranked =
+            articles
+              .map(
+                article => ({
+                  article,
+
+                  score:
+                    (
+                      article.innerText ||
+                      ""
+                    ).length +
+                    article.querySelectorAll(
+                      "img"
+                    ).length * 500
+                })
+              )
+              .sort(
+                (a, b) =>
+                  b.score -
+                  a.score
+              );
+
+
+          targetArticle =
+            ranked[0]?.article ||
+            null;
+        }
+
+
+        if (!targetArticle) {
+
+          return [];
+        }
+
+
+        const result =
+          [];
+
+
+        const images =
+          [
+            ...targetArticle.querySelectorAll(
+              "img"
+            )
+          ];
+
+
+        for (
+          const img
+          of images
+        ) {
+
+          const rect =
+            img.getBoundingClientRect();
+
+
+          const naturalWidth =
+            Number(
+              img.naturalWidth || 0
+            );
+
+
+          const naturalHeight =
+            Number(
+              img.naturalHeight || 0
+            );
+
+
+          /*
+             Відсікаємо аватарки,
+             іконки та дрібні картинки.
+          */
+
+          if (
+            (
+              naturalWidth > 0 &&
+              naturalWidth < 300
+            ) ||
+            (
+              naturalHeight > 0 &&
+              naturalHeight < 300
+            )
+          ) {
+
+            continue;
+          }
+
+
+          if (
+            rect.width > 0 &&
+            rect.height > 0 &&
+            (
+              rect.width < 200 ||
+              rect.height < 200
+            )
+          ) {
+
+            continue;
+          }
+
+
+          const candidates =
+            [];
+
+
+          /*
+             src
+          */
+
+          const src =
+            img.getAttribute(
+              "src"
+            );
+
+
+          if (
+            src &&
+            src.startsWith(
+              "http"
+            )
+          ) {
+
+            candidates.push({
+              url:
+                src,
+
+              score:
+                naturalWidth *
+                naturalHeight
+            });
+          }
+
+
+          /*
+             currentSrc
+          */
+
+          if (
+            img.currentSrc &&
+            img.currentSrc.startsWith(
+              "http"
+            )
+          ) {
+
+            candidates.push({
+              url:
+                img.currentSrc,
+
+              score:
+                naturalWidth *
+                naturalHeight +
+                1
+            });
+          }
+
+
+          /*
+             srcset.
+
+             Саме тут Facebook може
+             тримати більшу версію,
+             ніж поточний src.
+          */
+
+          const srcset =
+            img.getAttribute(
+              "srcset"
+            ) ||
+            img.getAttribute(
+              "data-srcset"
+            );
+
+
+          if (srcset) {
+
+            for (
+              const part
+              of srcset.split(",")
+            ) {
+
+              const pieces =
+                part
+                  .trim()
+                  .split(
+                    /\s+/
+                  );
+
+
+              const url =
+                pieces[0];
+
+
+              if (
+                !url ||
+                !url.startsWith(
+                  "http"
+                )
+              ) {
+
+                continue;
+              }
+
+
+              const descriptor =
+                pieces[1] ||
+                "";
+
+
+              let score =
+                naturalWidth *
+                naturalHeight;
+
+
+              if (
+                descriptor.endsWith(
+                  "w"
+                )
+              ) {
+
+                const width =
+                  parseFloat(
+                    descriptor
+                  );
+
+
+                if (
+                  Number.isFinite(
+                    width
+                  )
+                ) {
+
+                  score =
+                    width *
+                    width;
+                }
+
+              } else if (
+                descriptor.endsWith(
+                  "x"
+                )
+              ) {
+
+                const scale =
+                  parseFloat(
+                    descriptor
+                  );
+
+
+                if (
+                  Number.isFinite(
+                    scale
+                  )
+                ) {
+
+                  score =
+                    naturalWidth *
+                    naturalHeight *
+                    scale *
+                    scale;
+                }
+              }
+
+
+              candidates.push({
+                url,
+                score:
+                  score + 10
+              });
+            }
+          }
+
+
+          /*
+             data-src
+          */
+
+          const dataSrc =
+            img.getAttribute(
+              "data-src"
+            );
+
+
+          if (
+            dataSrc &&
+            dataSrc.startsWith(
+              "http"
+            )
+          ) {
+
+            candidates.push({
+              url:
+                dataSrc,
+
+              score:
+                naturalWidth *
+                naturalHeight +
+                5
+            });
+          }
+
+
+          /*
+             Іноді сама картинка загорнута
+             у посилання на Facebook photo.
+
+             URL картинки все одно беремо
+             з img/src/srcset, але такий
+             елемент отримує великий бонус,
+             бо це майже напевно медіа поста.
+          */
+
+          const parentLink =
+            img.closest(
+              "a[href]"
+            );
+
+
+          const parentHref =
+            parentLink?.href ||
+            "";
+
+
+          const photoBonus =
+            (
+              parentHref.includes(
+                "/photo"
+              ) ||
+              parentHref.includes(
+                "fbid="
+              )
+            )
+              ? 1000000000000
+              : 0;
+
+
+          for (
+            const candidate
+            of candidates
+          ) {
+
+            if (
+              !candidate.url.includes(
+                "fbcdn.net"
+              )
+            ) {
+
+              continue;
+            }
+
+
+            /*
+               Facebook profile pictures
+               часто мають тип -1 у URL.
+
+               Не забороняємо жорстко,
+               але сильно знижуємо рейтинг.
+            */
+
+            let penalty =
+              0;
+
+
+            if (
+              candidate.url.includes(
+                "t39.30808-1"
+              )
+            ) {
+
+              penalty +=
+                500000000000;
+            }
+
+
+            if (
+              candidate.url.includes(
+                "s40x40"
+              ) ||
+              candidate.url.includes(
+                "s160x160"
+              )
+            ) {
+
+              penalty +=
+                500000000000;
+            }
+
+
+            result.push({
+              url:
+                candidate.url,
+
+              score:
+                candidate.score +
+                photoBonus -
+                penalty,
+
+              naturalWidth,
+
+              naturalHeight,
+
+              renderedWidth:
+                Math.round(
+                  rect.width
+                ),
+
+              renderedHeight:
+                Math.round(
+                  rect.height
+                ),
+
+              parentHref
+            });
+          }
+        }
+
+
+        /*
+           Найкращі кандидати першими.
+        */
+
+        result.sort(
+          (a, b) =>
+            b.score -
+            a.score
+        );
+
+
+        /*
+           Прибираємо дублікати.
+        */
+
+        const unique =
+          [];
+
+
+        const seen =
+          new Set();
+
+
+        for (
+          const item
+          of result
+        ) {
+
+          if (
+            seen.has(
+              item.url
+            )
+          ) {
+
+            continue;
+          }
+
+
+          seen.add(
+            item.url
+          );
+
+
+          unique.push(
+            item
+          );
+        }
+
+
+        return unique;
       });
+
+
+    console.log(
+      "FACEBOOK POST IMAGE CANDIDATES:",
+      postUrl,
+      JSON.stringify(
+        postImages.slice(
+          0,
+          10
+        )
+      )
+    );
+
+
+    /*
+       /post-images та RSS очікують
+       масив URL, тому назовні
+       повертаємо тільки адреси.
+
+       У логах Render при цьому
+       залишаються розміри та score.
+    */
+
+    const originalImages =
+      postImages
+        .map(
+          item =>
+            item.url
+        )
+        .filter(Boolean);
 
 
     console.log(
@@ -985,19 +1513,17 @@ async function getFacebookPostImages(
       originalImages.length
     );
 
-    /*
-     * Якщо сторінка поста дала картинки —
-     * використовуємо їх.
-     *
-     * Якщо ні — залишаємо старі картинки.
-     */
+
     if (
       originalImages.length > 0
     ) {
+
       return originalImages;
     }
 
+
     return currentImages;
+
 
   } catch (error) {
 
@@ -1007,14 +1533,20 @@ async function getFacebookPostImages(
       String(error)
     );
 
+
     return currentImages;
+
 
   } finally {
 
     if (page) {
+
       try {
+
         await page.close();
-      } catch {}
+
+      } catch {
+      }
     }
   }
 }
