@@ -2163,7 +2163,7 @@ app.get(
 );
 
 /* =========================================================
-   FACEBOOK POST IMAGES TEST
+   FACEBOOK POST IMAGES DEBUG
 ========================================================= */
 
 app.get(
@@ -2194,6 +2194,8 @@ app.get(
 
 
     let context;
+    let page;
+
 
     try {
 
@@ -2204,12 +2206,17 @@ app.get(
       context =
         await browser.newContext({
           userAgent:
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36"
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36",
+
+          viewport: {
+            width: 1920,
+            height: 1080
+          }
         });
 
 
       /*
-         Додаємо ті самі Facebook cookies,
+         Ті самі Facebook cookies,
          що використовує RSS.
       */
 
@@ -2220,10 +2227,16 @@ app.get(
       if (rawCookies) {
 
         const cookies =
-          JSON.parse(rawCookies);
+          JSON.parse(
+            rawCookies
+          );
 
 
-        if (Array.isArray(cookies)) {
+        if (
+          Array.isArray(
+            cookies
+          )
+        ) {
 
           const normalizedCookies =
             cookies
@@ -2233,61 +2246,67 @@ app.get(
                   cookie.name &&
                   cookie.value
               )
-              .map(cookie => {
+              .map(
+                cookie => {
 
-                const result = {
-                  name:
-                    String(cookie.name),
+                  const result = {
+                    name:
+                      String(
+                        cookie.name
+                      ),
 
-                  value:
-                    String(cookie.value),
+                    value:
+                      String(
+                        cookie.value
+                      ),
 
-                  domain:
-                    cookie.domain ||
-                    ".facebook.com",
+                    domain:
+                      cookie.domain ||
+                      ".facebook.com",
 
-                  path:
-                    cookie.path ||
-                    "/"
-                };
+                    path:
+                      cookie.path ||
+                      "/"
+                  };
 
 
-                if (
-                  cookie.sameSite ===
-                    "Strict" ||
-                  cookie.sameSite ===
-                    "Lax" ||
-                  cookie.sameSite ===
-                    "None"
-                ) {
+                  if (
+                    cookie.sameSite ===
+                      "Strict" ||
+                    cookie.sameSite ===
+                      "Lax" ||
+                    cookie.sameSite ===
+                      "None"
+                  ) {
 
-                  result.sameSite =
-                    cookie.sameSite;
+                    result.sameSite =
+                      cookie.sameSite;
+                  }
+
+
+                  if (
+                    typeof cookie.secure ===
+                    "boolean"
+                  ) {
+
+                    result.secure =
+                      cookie.secure;
+                  }
+
+
+                  if (
+                    typeof cookie.httpOnly ===
+                    "boolean"
+                  ) {
+
+                    result.httpOnly =
+                      cookie.httpOnly;
+                  }
+
+
+                  return result;
                 }
-
-
-                if (
-                  typeof cookie.secure ===
-                  "boolean"
-                ) {
-
-                  result.secure =
-                    cookie.secure;
-                }
-
-
-                if (
-                  typeof cookie.httpOnly ===
-                  "boolean"
-                ) {
-
-                  result.httpOnly =
-                    cookie.httpOnly;
-                }
-
-
-                return result;
-              });
+              );
 
 
           await context.addCookies(
@@ -2297,40 +2316,243 @@ app.get(
       }
 
 
+      page =
+        await context.newPage();
+
+
       console.log(
-        "POST IMAGES TEST:",
+        "POST IMAGES DEBUG:",
         postUrl
       );
 
 
-      const images =
-        await getFacebookPostImages(
-          context,
+      try {
+
+        await page.goto(
           postUrl,
-          []
+          {
+            waitUntil:
+              "domcontentloaded",
+
+            timeout:
+              25000
+          }
+        );
+
+      } catch (error) {
+
+        console.log(
+          "POST IMAGES DEBUG GOTO:",
+          String(error)
+        );
+      }
+
+
+      await page.waitForTimeout(
+        5000
+      );
+
+
+      /*
+         Трохи прокручуємо сторінку,
+         щоб Facebook завантажив картинки.
+      */
+
+      await page.evaluate(
+        () => {
+          window.scrollBy(
+            0,
+            500
+          );
+        }
+      );
+
+
+      await page.waitForTimeout(
+        2000
+      );
+
+
+      const result =
+        await page.evaluate(
+          () => {
+
+            const images =
+              [
+                ...document.querySelectorAll(
+                  "img"
+                )
+              ];
+
+
+            return images
+              .map(
+                (
+                  img,
+                  index
+                ) => {
+
+                  const article =
+                    img.closest(
+                      '[role="article"]'
+                    );
+
+
+                  const anchor =
+                    img.closest(
+                      "a[href]"
+                    );
+
+
+                  const rect =
+                    img.getBoundingClientRect();
+
+
+                  return {
+                    index,
+
+                    src:
+                      img.currentSrc ||
+                      img.src ||
+                      "",
+
+                    naturalWidth:
+                      img.naturalWidth ||
+                      0,
+
+                    naturalHeight:
+                      img.naturalHeight ||
+                      0,
+
+                    displayWidth:
+                      Math.round(
+                        rect.width
+                      ),
+
+                    displayHeight:
+                      Math.round(
+                        rect.height
+                      ),
+
+                    alt:
+                      img.getAttribute(
+                        "alt"
+                      ) || "",
+
+                    inArticle:
+                      Boolean(
+                        article
+                      ),
+
+                    articleText:
+                      article
+                        ? (
+                            article.innerText ||
+                            ""
+                          )
+                            .trim()
+                            .slice(
+                              0,
+                              500
+                            )
+                        : "",
+
+                    href:
+                      anchor
+                        ? anchor.href
+                        : "",
+
+                    srcset:
+                      img.getAttribute(
+                        "srcset"
+                      ) || ""
+                  };
+                }
+              )
+              .filter(
+                image =>
+                  image.src &&
+                  (
+                    image.src.includes(
+                      "fbcdn.net"
+                    ) ||
+                    image.src.includes(
+                      "facebook.com"
+                    )
+                  )
+              );
+          }
         );
 
 
+      /*
+         Великі/ймовірно корисні картинки
+         показуємо першими.
+      */
+
+      result.sort(
+        (
+          a,
+          b
+        ) => {
+
+          const aArea =
+            a.naturalWidth *
+            a.naturalHeight;
+
+          const bArea =
+            b.naturalWidth *
+            b.naturalHeight;
+
+
+          if (
+            a.inArticle !==
+            b.inArticle
+          ) {
+
+            return a.inArticle
+              ? -1
+              : 1;
+          }
+
+
+          return (
+            bArea -
+            aArea
+          );
+        }
+      );
+
+
       console.log(
-        "POST IMAGES TEST RESULT:",
-        postUrl,
-        JSON.stringify(images)
+        "POST IMAGES DEBUG FOUND:",
+        result.length
       );
 
 
       return res.json({
         ok: true,
+
         postUrl,
+
+        finalUrl:
+          page.url(),
+
+        title:
+          await page.title(),
+
         count:
-          images.length,
-        images
+          result.length,
+
+        images:
+          result
       });
 
 
     } catch (error) {
 
       console.log(
-        "POST IMAGES TEST ERROR:",
+        "POST IMAGES DEBUG ERROR:",
         String(error)
       );
 
@@ -2339,12 +2561,22 @@ app.get(
         .status(500)
         .json({
           ok: false,
+
           error:
             String(error)
         });
 
 
     } finally {
+
+      if (page) {
+
+        try {
+          await page.close();
+        } catch {
+        }
+      }
+
 
       if (context) {
 
@@ -2356,7 +2588,6 @@ app.get(
     }
   }
 );
-
 /* =========================================================
    FACEBOOK IMAGE PROXY
 ========================================================= */
