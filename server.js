@@ -2560,6 +2560,50 @@ if (articleCount === 0) {
  * тільки для них.
  */
 
+const isPhotoPost =
+  !post.postUrl.includes("/reel/") &&
+  !post.postUrl.includes("/videos/");
+
+const hasLowQualityImages =
+  isPhotoPost &&
+  Array.isArray(post.images) &&
+  post.images.length > 0 &&
+  post.images.some(image => {
+    const value =
+      String(image || "");
+
+    const size =
+      value.match(/(?:[?&]|%26)cstp=mx(\d+)x(\d+)/i) ||
+      value.match(/(?:[?&]|%26)stp=[^&]*?mx(\d+)x(\d+)/i) ||
+      value.match(/mx(\d+)x(\d+)/i) ||
+      value.match(/(?:[?&]|%26)ctp=s(\d+)x(\d+)/i);
+
+    if (!size) {
+      return false;
+    }
+
+    const width =
+      Number(size[1]) || 0;
+
+    const height =
+      Number(size[2]) || 0;
+
+    return (
+      width > 0 &&
+      height > 0 &&
+      Math.max(width, height) < 1000
+    );
+  });
+
+if (hasLowQualityImages) {
+  post.images =
+    await getFacebookPostImages(
+      context,
+      post.postUrl,
+      post.images
+    );
+}
+
 const isVideoPost =
   post.postUrl.includes("/reel/") ||
   post.postUrl.includes("/videos/");
