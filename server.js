@@ -2229,199 +2229,252 @@ if (articleCount === 0) {
               /*
                  Фото.
               */
-              const images =
-                [
-                  ...node.querySelectorAll(
-                    "img"
-                  )
-                ]
-                  .flatMap(
-                    img => {
+              const images = [
+                ...node.querySelectorAll("img")
+              ]
+                .flatMap(img => {
+                  const candidates = [];
               
-                      const candidates = [];
+                  const addCandidate = (imageUrl, bonus = 0) => {
+                    if (!imageUrl || !imageUrl.startsWith("http")) {
+                      return;
+                    }
               
+                    const cleanUrl = imageUrl.replace(/&amp;/g, "&");
               
-                      /*
-                         Поточна URL картинки
-                      */
+                    let width = 0;
+                    let height = 0;
+              
+                    /*
+                       Facebook часто пише максимальний
+                       розмір прямо в URL:
+              
+                       cstp=mx1365x2048
+                       cstp=mx2048x1365
+                       cstp=mx512x640
+                    */
+                    const maxSize =
+                      cleanUrl.match(/(?:[?&]|%26)cstp=mx(\d+)x(\d+)/i) ||
+                      cleanUrl.match(/(?:[?&]|%26)stp=[^&]*?mx(\d+)x(\d+)/i) ||
+                      cleanUrl.match(/mx(\d+)x(\d+)/i);
+              
+                    if (maxSize) {
+                      width = Number(maxSize[1]) || 0;
+                      height = Number(maxSize[2]) || 0;
+                    }
+              
+                    /*
+                       Якщо mx немає — дивимось ctp:
+                       ctp=s512x640
+                       ctp=s590x590
+                    */
+                    if (!width || !height) {
+                      const currentSize =
+                        cleanUrl.match(/(?:[?&]|%26)ctp=s(\d+)x(\d+)/i);
+              
+                      if (currentSize) {
+                        width = Number(currentSize[1]) || 0;
+                        height = Number(currentSize[2]) || 0;
+                      }
+                    }
+              
+                    /*
+                       Якщо розмір у URL не вказаний —
+                       беремо natural size.
+                    */
+                    if (!width || !height) {
+                      width = Number(img.naturalWidth || 0);
+                      height = Number(img.naturalHeight || 0);
+                    }
+              
+                    let score = bonus;
+              
+                    if (width > 0 && height > 0) {
+                      score += width * height;
+                    }
+              
+                    if (width >= 500 && height >= 500) {
+                      score += 100000000;
+                    }
+              
+                    if (width >= 1000 || height >= 1000) {
+                      score += 200000000;
+                    }
+              
+                    /*
+                       Аватарки та дрібні thumbnail
+                       сильно знижуємо в рейтингу.
+                    */
+                    if (cleanUrl.includes("t39.30808-1")) {
+                      score -= 500000000;
+                    }
+              
+                    if (
+                      cleanUrl.includes("s40x40") ||
+                      cleanUrl.includes("s60x60") ||
+                      cleanUrl.includes("s80x80") ||
+                      cleanUrl.includes("s100x100") ||
+                      cleanUrl.includes("s160x160")
+                    ) {
+                      score -= 500000000;
+                    }
+              
+                    if (
+                      cleanUrl.includes("static.xx.fbcdn.net") ||
+                      cleanUrl.includes("/emoji.php")
+                    ) {
+                      score -= 1000000000;
+                    }
+              
+                    candidates.push({
+                      url: cleanUrl,
+                      width,
+                      height,
+                      score
+                    });
+                  };
+              
+                  /*
+                     src
+                  */
+                  addCandidate(
+                    img.getAttribute("src") || img.src || "",
+                    1
+                  );
+              
+                  /*
+                     currentSrc
+                  */
+                  addCandidate(
+                    img.currentSrc || "",
+                    10
+                  );
+              
+                  /*
+                     data-src
+                  */
+                  addCandidate(
+                    img.getAttribute("data-src") || "",
+                    5
+                  );
+              
+                  /*
+                     srcset / data-srcset
+                  */
+                  const srcset =
+                    img.getAttribute("srcset") ||
+                    img.getAttribute("data-srcset");
+              
+                  if (srcset) {
+                    for (const part of srcset.split(",")) {
+                      const pieces =
+                        part.trim().split(/\s+/);
+              
+                      const candidateUrl = pieces[0];
+              
                       if (
-                        img.src
+                        !candidateUrl ||
+                        !candidateUrl.startsWith("http")
                       ) {
-                        candidates.push(
-                          {
-                            url:
-                              img.src,
-                            score:
-                              1
-                          }
-                        );
+                        continue;
                       }
               
+                      const descriptor = pieces[1] || "";
               
-                      /*
-                         currentSrc може бути
-                         вже вибраною браузером
-                         більшою версією.
-                      */
-                      if (
-                        img.currentSrc
-                      ) {
-                        candidates.push(
-                          {
-                            url:
-                              img.currentSrc,
-                            score:
-                              2
-                          }
-                        );
-                      }
+                      let bonus = 20;
               
+                      if (descriptor.endsWith("w")) {
+                        const value = parseFloat(descriptor);
               
-                      /*
-                         Facebook часто ховає
-                         великі версії у srcset.
-                      */
-                      const srcset =
-                        img.getAttribute(
-                          "srcset"
-                        ) ||
-                        img.getAttribute(
-                          "data-srcset"
-                        );
+                        if (Number.isFinite(value)) {
+                          bonus += value;
+                        }
               
+                      } else if (descriptor.endsWith("x")) {
+                        const value = parseFloat(descriptor);
               
-                      if (
-                        srcset
-                      ) {
-              
-                        for (
-                          const part
-                          of srcset.split(",")
-                        ) {
-              
-                          const pieces =
-                            part.trim()
-                              .split(
-                                /\s+/
-                              );
-              
-              
-                          const url =
-                            pieces[0];
-              
-              
-                          if (
-                            !url ||
-                            !url.startsWith(
-                              "http"
-                            )
-                          ) {
-                            continue;
-                          }
-              
-              
-                          let score =
-                            3;
-              
-              
-                          const descriptor =
-                            pieces[1] ||
-                            "";
-              
-              
-                          /*
-                             1200w -> score 1200
-                             2x    -> score 2000
-                          */
-                          if (
-                            descriptor.endsWith(
-                              "w"
-                            )
-                          ) {
-              
-                            score =
-                              parseFloat(
-                                descriptor
-                              );
-              
-                          } else if (
-                            descriptor.endsWith(
-                              "x"
-                            )
-                          ) {
-              
-                            score =
-                              parseFloat(
-                                descriptor
-                              ) * 1000;
-                          }
-              
-              
-                          candidates.push(
-                            {
-                              url,
-                              score
-                            }
-                          );
+                        if (Number.isFinite(value)) {
+                          bonus += value * 1000;
                         }
                       }
               
-              
-                      /*
-                         data-src — запасний варіант
-                      */
-                      const dataSrc =
-                        img.getAttribute(
-                          "data-src"
-                        );
-              
-              
-                      if (
-                        dataSrc &&
-                        dataSrc.startsWith(
-                          "http"
-                        )
-                      ) {
-              
-                        candidates.push(
-                          {
-                            url:
-                              dataSrc,
-                            score:
-                              2.5
-                          }
-                        );
-                      }
-              
-              
-                      /*
-                         Беремо найбільшу доступну
-                         версію картинки.
-                      */
-                      candidates.sort(
-                        (
-                          a,
-                          b
-                        ) =>
-                          b.score -
-                          a.score
+                      addCandidate(
+                        candidateUrl,
+                        bonus
                       );
-              
-              
-                      return candidates.length
-                        ? [
-                            candidates[0].url
-                          ]
-                        : [];
                     }
-                  )
-                  .filter(
-                    src =>
-                      src &&
-                      src.startsWith(
-                        "http"
-                      )
-                  );
+                  }
+              
+                  /*
+                     Прибираємо дублікати одного img.
+                  */
+                  const uniqueCandidates = new Map();
+              
+                  for (const candidate of candidates) {
+                    const previous =
+                      uniqueCandidates.get(candidate.url);
+              
+                    if (
+                      !previous ||
+                      candidate.score > previous.score
+                    ) {
+                      uniqueCandidates.set(
+                        candidate.url,
+                        candidate
+                      );
+                    }
+                  }
+              
+                  /*
+                     Беремо найкращу версію цього img.
+                  */
+                  const best = [
+                    ...uniqueCandidates.values()
+                  ].sort(
+                    (a, b) => b.score - a.score
+                  )[0];
+              
+                  if (!best) {
+                    return [];
+                  }
+              
+                  /*
+                     Відсікаємо очевидну дрібноту.
+                  */
+                  if (
+                    best.width > 0 &&
+                    best.height > 0 &&
+                    best.width < 300 &&
+                    best.height < 300
+                  ) {
+                    return [];
+                  }
+              
+                  return [best];
+                })
+              
+                /*
+                   Сортуємо картинки самого поста.
+                   Великі версії будуть першими.
+                */
+                .sort(
+                  (a, b) => b.score - a.score
+                )
+              
+                .map(image => image.url)
+              
+                .filter(
+                  src =>
+                    src &&
+                    src.startsWith("http")
+                );
+              
+              
+              return {
+                text,
+                postUrl,
+                images: [...new Set(images)]
+              };
 
 
               return {
