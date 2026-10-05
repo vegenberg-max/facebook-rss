@@ -651,7 +651,7 @@ async function checkFacebookAuth() {
 
 
       await sendTelegramAlert(
-        "✅ Facebook-сесію на Render відновлено. RSS знову можуть читати джерела, які потребують авторизації."
+        "✅ Facebook-сесію на Render відновлено. RSS знову можуть читати джерела, які потребують авторизації"
       );
     }
 
