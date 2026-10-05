@@ -926,7 +926,55 @@ async function getFacebookPostImages(
        реклама та сусідні Reel сюди
        не повинні потрапляти.
     */
-
+    const imageDebug =
+      await page.evaluate(() => {
+    
+        const html =
+          document.documentElement.outerHTML;
+    
+    
+        const needle =
+          "833993803_1441317284611955_3450432627548124986";
+    
+    
+        const index =
+          html.indexOf(
+            needle
+          );
+    
+    
+        if (index === -1) {
+    
+          return {
+            found: false
+          };
+        }
+    
+    
+        return {
+          found: true,
+    
+          index,
+    
+          around:
+            html.slice(
+              Math.max(
+                0,
+                index - 3000
+              ),
+              index + 3000
+            )
+        };
+      });
+    
+    
+    console.log(
+      "FACEBOOK TARGET IMAGE DEBUG:",
+      JSON.stringify(
+        imageDebug
+      )
+    );
+    
     const postImages =
       await page.evaluate(() => {
 
