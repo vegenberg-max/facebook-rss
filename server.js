@@ -2163,6 +2163,201 @@ app.get(
 );
 
 /* =========================================================
+   FACEBOOK POST IMAGES TEST
+========================================================= */
+
+app.get(
+  "/post-images",
+  async (req, res) => {
+
+    const postUrl =
+      String(
+        req.query.url || ""
+      ).trim();
+
+
+    if (
+      !postUrl ||
+      !postUrl.startsWith(
+        "https://www.facebook.com/"
+      )
+    ) {
+
+      return res
+        .status(400)
+        .json({
+          ok: false,
+          error:
+            "Valid Facebook post URL required"
+        });
+    }
+
+
+    let context;
+
+    try {
+
+      const browser =
+        await getBrowser();
+
+
+      context =
+        await browser.newContext({
+          userAgent:
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36"
+        });
+
+
+      /*
+         Додаємо ті самі Facebook cookies,
+         що використовує RSS.
+      */
+
+      const rawCookies =
+        process.env.FACEBOOK_COOKIES;
+
+
+      if (rawCookies) {
+
+        const cookies =
+          JSON.parse(rawCookies);
+
+
+        if (Array.isArray(cookies)) {
+
+          const normalizedCookies =
+            cookies
+              .filter(
+                cookie =>
+                  cookie &&
+                  cookie.name &&
+                  cookie.value
+              )
+              .map(cookie => {
+
+                const result = {
+                  name:
+                    String(cookie.name),
+
+                  value:
+                    String(cookie.value),
+
+                  domain:
+                    cookie.domain ||
+                    ".facebook.com",
+
+                  path:
+                    cookie.path ||
+                    "/"
+                };
+
+
+                if (
+                  cookie.sameSite ===
+                    "Strict" ||
+                  cookie.sameSite ===
+                    "Lax" ||
+                  cookie.sameSite ===
+                    "None"
+                ) {
+
+                  result.sameSite =
+                    cookie.sameSite;
+                }
+
+
+                if (
+                  typeof cookie.secure ===
+                  "boolean"
+                ) {
+
+                  result.secure =
+                    cookie.secure;
+                }
+
+
+                if (
+                  typeof cookie.httpOnly ===
+                  "boolean"
+                ) {
+
+                  result.httpOnly =
+                    cookie.httpOnly;
+                }
+
+
+                return result;
+              });
+
+
+          await context.addCookies(
+            normalizedCookies
+          );
+        }
+      }
+
+
+      console.log(
+        "POST IMAGES TEST:",
+        postUrl
+      );
+
+
+      const images =
+        await getFacebookPostImages(
+          context,
+          postUrl,
+          []
+        );
+
+
+      console.log(
+        "POST IMAGES TEST RESULT:",
+        postUrl,
+        JSON.stringify(images)
+      );
+
+
+      return res.json({
+        ok: true,
+        postUrl,
+        count:
+          images.length,
+        images
+      });
+
+
+    } catch (error) {
+
+      console.log(
+        "POST IMAGES TEST ERROR:",
+        String(error)
+      );
+
+
+      return res
+        .status(500)
+        .json({
+          ok: false,
+          error:
+            String(error)
+        });
+
+
+    } finally {
+
+      if (context) {
+
+        try {
+          await context.close();
+        } catch {
+        }
+      }
+    }
+  }
+);
+
+/* =========================================================
    FACEBOOK IMAGE PROXY
 ========================================================= */
 
