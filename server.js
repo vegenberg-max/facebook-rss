@@ -2579,7 +2579,7 @@ const hasLowQualityImages =
       value.match(/(?:[?&]|%26)ctp=s(\d+)x(\d+)/i);
 
     if (!size) {
-      return false;
+      return true;
     }
 
     const width =
