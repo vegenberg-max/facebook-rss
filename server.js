@@ -1,6 +1,7 @@
 import express from "express";
 import { chromium } from "playwright";
 import fs from "fs/promises";
+import { createClient } from "@libsql/client";
 
 const app = express();
 
@@ -413,6 +414,56 @@ let facebookScrapeQueue =
 
 const rssCache = new Map();
 
+const turso = createClient({
+  url: process.env.TURSO_DATABASE_URL,
+  authToken: process.env.TURSO_AUTH_TOKEN
+});
+
+async function restoreRssCache() {
+  await turso.execute(`
+    CREATE TABLE IF NOT EXISTS rss_cache (
+      feed_id TEXT PRIMARY KEY,
+      rss TEXT NOT NULL,
+      posts INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+  `);
+
+  const result = await turso.execute(
+    "SELECT * FROM rss_cache"
+  );
+
+  for (const row of result.rows) {
+    rssCache.set(String(row.feed_id), {
+      rss: String(row.rss),
+      posts: Number(row.posts),
+      updatedAt: Number(row.updated_at)
+    });
+  }
+
+  console.log("TURSO RSS RESTORED:", result.rows.length);
+}
+
+async function saveRssCache(id, entry) {
+  await turso.execute({
+    sql: `
+      INSERT INTO rss_cache
+        (feed_id, rss, posts, updated_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(feed_id) DO UPDATE SET
+        rss = excluded.rss,
+        posts = excluded.posts,
+        updated_at = excluded.updated_at
+    `,
+    args: [
+      String(id),
+      entry.rss,
+      entry.posts,
+      entry.updatedAt
+    ]
+  });
+}
+
 // Зберігаємо самі Promise, щоб кілька запитів
 // одного RSS чекали на одне оновлення.
 const rssUpdating = new Map();
@@ -456,6 +507,13 @@ async function updateFeedCache(source) {
       };
 
       rssCache.set(id, entry);
+
+      try {
+        await saveRssCache(id, entry);
+        console.log("TURSO RSS SAVED:", id);
+      } catch (error) {
+        console.error("TURSO SAVE ERROR:", id, error);
+      }
 
       console.log(
         "CACHE UPDATE OK:",
@@ -3589,6 +3647,7 @@ return res.status(503).json({
   }
 );
 
+await restoreRssCache();
 app.listen(
   PORT,
   () => {
